@@ -15,6 +15,8 @@ ok("manifest has a maskable icon and relative start_url/scope", man.icons.some(i
 // versions agree
 const swV = sw.match(/const VERSION = "garmin-lens-v([\d.]+)"/)[1], appV = app.match(/APP_VERSION = "([\d.]+)"/)[1];
 eq("sw.js VERSION matches APP_VERSION", swV, appV);
+eq("CHANGELOG top entry is the current version", fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8").match(/^## ([\d.]+)/m)[1], appV);
+eq("version bumped past 1.0.0 so installed copies update", appV, "1.1.0");
 ok("sw deletes only its own old caches", /startsWith\("garmin-lens-"\)/.test(sw));
 ok("sw rebuilds redirected responses (plain())", /function plain\(/.test(sw) && /res\.redirected/.test(sw));
 ok("sw never touches cross-origin requests", /url\.origin !== self\.location\.origin\) return/.test(sw));

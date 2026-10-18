@@ -42,7 +42,7 @@
     return parts.join(". ") + ".";
   }
   function nearestIndex(xPx, left, width, n) { if (n <= 1) return 0; var t = (xPx - left) / width; return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1)))); }
-  var NOTE_COLORS = { alcohol: "#a855f7", illness: "#ef4444", travel: "#0ea5e9", hard: "#f97316", note: "#94a3b8", stress: "#eab308", caffeine: "#a16207", sleep: "#6366f1" };
+  var NOTE_COLORS = { alcohol: "#a855f7", illness: "#ef4444", travel: "#0ea5e9", hard: "#f97316", note: "#94a3b8", stress: "#eab308", caffeine: "#a16207", sleep: "#6366f1", cycle: "#ec4899" };
 
   /* ---------- drawing ---------- */
   function cssVar(el, name, fallback) { var v = getComputedStyle(el).getPropertyValue(name).trim(); return v || fallback; }

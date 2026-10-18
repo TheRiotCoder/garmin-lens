@@ -59,16 +59,18 @@
     if (v.length >= 5) return { value: Math.round(S.percentile(v, 95)), source: "activity-max", n: v.length };
     return { value: 185, source: "placeholder" };
   }
+  // Banister (1991) weighting: men 0.64·e^(1.92x), women 0.86·e^(1.67x), x = heart-rate reserve fraction
   function bFactor(sex) { return sex === "f" ? 1.67 : 1.92; }
+  function bCoef(sex) { return sex === "f" ? 0.86 : 0.64; }
   function hrr(hr, s) { return S.clamp((hr - s.restHr) / (s.maxHr - s.restHr), 0, 1.1); }
   // Banister TRIMP for one heart-rate sample held for `minutes`
-  function trimpSample(hr, minutes, s) { var x = hrr(hr, s); return x <= 0 ? 0 : minutes * x * 0.64 * Math.exp(bFactor(s.sex) * x); }
+  function trimpSample(hr, minutes, s) { var x = hrr(hr, s); return x <= 0 ? 0 : minutes * x * bCoef(s.sex) * Math.exp(bFactor(s.sex) * x); }
   function trimpFromSeries(hrArr, stepSec, s) { var t = 0, m = stepSec / 60; for (var i = 0; i < hrArr.length; i++) if (hrArr[i] > 20) t += trimpSample(hrArr[i], m, s); return t; }
   function zoneEdges(s) { return s.zoneMode === "hrr" ? [0.5, 0.6, 0.7, 0.8, 0.9].map(function (p) { return s.restHr + p * (s.maxHr - s.restHr); }) : [0.5, 0.6, 0.7, 0.8, 0.9].map(function (p) { return p * s.maxHr; }); }
   function zoneOf(hr, edges) { var z = 0; for (var i = 0; i < edges.length; i++) if (hr >= edges[i]) z = i + 1; return z; }
   // seconds in zones Z0 (<50%) .. Z5
   function zonesFromSeries(hrArr, stepSec, s) { var e = zoneEdges(s), out = [0, 0, 0, 0, 0, 0]; for (var i = 0; i < hrArr.length; i++) if (hrArr[i] > 20) out[zoneOf(hrArr[i], e)] += stepSec; return out; }
-  function trimpHour(s) { var x = hrr(s.lthr, s); return 60 * x * 0.64 * Math.exp(bFactor(s.sex) * x); }
+  function trimpHour(s) { var x = hrr(s.lthr, s); return 60 * x * bCoef(s.sex) * Math.exp(bFactor(s.sex) * x); }
   // enrich an activity with load numbers. source tells how trustworthy: series > zones > avg
   function enrichActivity(a, series, s) {
     var o = Object.assign({}, a); delete o.series;
@@ -109,6 +111,8 @@
     series.load = series.load.map(function (x) { return Math.round(x * 10) / 10; });
     var ds = { settings: s, dates: dates, idx: idx, n: n, s: series, days: byDate, acts: enriched, actsByDate: actsByDate, notes: notes || [], notesByDate: {}, demo: days.some(function (d) { return d.demo; }) };
     (notes || []).forEach(function (nt) { (ds.notesByDate[nt.date] = ds.notesByDate[nt.date] || []).push(nt); });
+    ds.cycleDays = {}; // days covered by a "cycle" event (optionally a range via nt.until, max 45 days) – a confounder, not an exposure
+    (notes || []).forEach(function (nt) { if (nt.type !== "cycle") return; var d0 = nt.date, last = nt.until && nt.until >= nt.date ? nt.until : nt.date; for (var q = 0; q < 45 && d0 <= last; q++) { ds.cycleDays[d0] = true; d0 = D.addDays(d0, 1); } });
     var pmc = performanceChart(series.load, s); ds.s.ctl = pmc.ctl; ds.s.atl = pmc.atl; ds.s.tsb = pmc.tsb; ds.s.tsbPrior = pmc.tsbPrior;
     ds.s.recovery = dates.map(function (_, i) { var r = recovery(ds, i); return r ? r.score : null; });
     return ds;
@@ -139,10 +143,12 @@
 
   /* ---------- baselines / z-scores ---------- */
   var SD_FLOOR = { rhr: 1.0, lnHrv: 0.05, resp: 0.3, skin: 0.15, sleepH: 0.35, stress: 3, sleepScore: 4, bbHigh: 4, deepPct: 2, steps: 1200, spo2: 0.6, readiness: 6 };
-  function zScore(ds, key, i, win, robust) {
+  function zScore(ds, key, i, win, robust, skip) {
     var arr = ds.s[key]; if (!arr || !ok(arr[i])) return null;
     win = win || ds.settings.baselineDays;
-    var v = [], from = Math.max(0, i - win); for (var k = from; k < i; k++) if (ok(arr[k])) v.push(arr[k]);
+    var v = [], from = Math.max(0, i - win); for (var k = from; k < i; k++) if (ok(arr[k]) && !(skip && skip[k])) v.push(arr[k]);
+    // when flagged days are skipped (anomaly check) and too few clean days remain, look further back (up to 3× the window)
+    if (skip && v.length < 10) { v = []; for (var k2 = Math.max(0, i - win * 3); k2 < i; k2++) if (ok(arr[k2]) && !skip[k2]) v.push(arr[k2]); }
     if (v.length < 10) return null;
     var m, sd;
     if (robust === false) { m = S.mean(v); sd = S.sd(v); } else { m = S.median(v); var mad = S.mad(v); sd = mad ? 1.4826 * mad : S.sd(v); }
@@ -157,7 +163,7 @@
   function rollingBand(ds, key, win) { return ds.dates.map(function (_, i) { return normalRange(ds, key, i, win); }); }
 
   /* ---------- recovery score (transparent) ---------- */
-  var RECOVERY_WEIGHTS = { hrv: 0.40, rhr: 0.20, sleep: 0.25, stress: 0.075, load: 0.075 }, RECOVERY_K = 1.3;
+  var RECOVERY_WEIGHTS = { hrv: 0.40, rhr: 0.20, sleep: 0.25, stress: 0.075, load: 0.075 }, RECOVERY_K = 1.3, SLEEP_BONUS_CAP = 1; // oversleeping is not rewarded beyond +1 z
   function recovery(ds, i) {
     var comps = [], s = ds.settings, z;
     z = zScore(ds, "lnHrv", i);
@@ -168,7 +174,7 @@
       comps.push({ key: "hrv", label: lab, z: S.clamp(zz, -3, 3), w: RECOVERY_WEIGHTS.hrv, detail: det });
     }
     z = zScore(ds, "rhr", i); if (z) comps.push({ key: "rhr", label: "Resting HR vs your 28-day normal (lower is better)", z: S.clamp(-z.z, -3, 3), w: RECOVERY_WEIGHTS.rhr, detail: z });
-    if (ok(ds.s.sleepH[i])) comps.push({ key: "sleep", label: "Sleep vs your need (" + s.sleepNeedH + " h)", z: S.clamp((ds.s.sleepH[i] - s.sleepNeedH) / 1.0, -3, 3), w: RECOVERY_WEIGHTS.sleep, detail: { value: ds.s.sleepH[i], need: s.sleepNeedH } });
+    if (ok(ds.s.sleepH[i])) comps.push({ key: "sleep", label: "Sleep vs your need (" + s.sleepNeedH + " h; extra sleep counts at most +" + SLEEP_BONUS_CAP + ")", z: S.clamp((ds.s.sleepH[i] - s.sleepNeedH) / 1.0, -3, SLEEP_BONUS_CAP), w: RECOVERY_WEIGHTS.sleep, detail: { value: ds.s.sleepH[i], need: s.sleepNeedH } });
     if (i > 0) { z = zScore(ds, "stress", i - 1); if (z) comps.push({ key: "stress", label: "Yesterday's stress vs normal (lower is better)", z: S.clamp(-z.z, -3, 3), w: RECOVERY_WEIGHTS.stress, detail: z }); }
     if (ok(ds.s.tsbPrior[i]) && i >= 28) { var acp = i > 0 ? acwr(ds.s.load, i - 1) : null, jump = !!(acp && acp.ratio > ACWR_HIGH); comps.push({ key: "load", label: "Training form (TSB) going into today" + (jump ? ", minus 1 because load jumped quickly (ratio above " + ACWR_HIGH + ")" : ""), z: S.clamp(ds.s.tsbPrior[i] / 20 - (jump ? 1 : 0), -2.5, 2.5), w: RECOVERY_WEIGHTS.load, detail: { tsb: ds.s.tsbPrior[i], ratio: acp ? acp.ratio : null, penalty: jump } }); }
     var hasCore = comps.some(function (c) { return c.key === "hrv" || c.key === "rhr"; });
@@ -209,10 +215,12 @@
     { key: "resp", dir: 1, z: 1.5, min: 0.8, label: "breathing rate up", unit: "brpm" },
     { key: "skin", dir: 1, z: 1.5, min: 0.5, label: "skin temperature up", unit: "°C" }
   ];
-  function dayAnomaly(ds, i) {
+  // Baseline hygiene: days that were themselves flagged never enter the baseline of later days, so a long illness cannot "normalise" itself
+  // (with a plain trailing median the flag would switch off after ~4-5 days while the person is still unwell).
+  function scoreAnomaly(ds, i, skip) {
     var sig = [], z = null;
     SIGNALS.forEach(function (sg) {
-      z = zScore(ds, sg.key, i); if (!z) return;
+      z = zScore(ds, sg.key, i, null, true, skip); if (!z) return;
       var delta = z.value - z.mean, passes = sg.dir * z.z >= sg.z && (sg.key === "lnHrv" ? delta <= Math.log(0.85) : sg.dir * delta >= sg.min);
       sig.push({ key: sg.key, label: sg.label, z: z.z, delta: sg.key === "lnHrv" ? (Math.exp(delta) - 1) * 100 : delta, pass: passes });
     });
@@ -223,12 +231,18 @@
     else if (cnt >= 3) level = "possible";
     return { level: level, signals: sig, count: cnt };
   }
+  function dayAnomaly(ds, i) { // sequential and memoised on the dataset: day i is scored against a baseline that excludes earlier flagged days
+    if (!ds._an) ds._an = { flags: [], res: [], done: 0 };
+    var c = ds._an; for (var k = c.done; k <= i && k < ds.n; k++) { c.res[k] = scoreAnomaly(ds, k, c.flags); c.flags[k] = !!c.res[k].level; c.done = k + 1; }
+    return c.res[i];
+  }
   // Single flagged night = "worth watching"; 2+ consecutive flagged days = "strain pattern". Neither is a diagnosis.
   function anomalyStatus(ds, i) {
-    var a = dayAnomaly(ds, i); if (!a.level) return { kind: null, days: 0, level: null, signals: a.signals };
+    var a = dayAnomaly(ds, i); if (!a.level) return { kind: null, days: 0, level: null, signals: a.signals, cycleTagged: false, lutealNote: false };
     var days = 1; for (var k = i - 1; k >= 0 && dayAnomaly(ds, k).level; k--) days++;
-    return { kind: days >= 2 ? "pattern" : "watch", days: days, level: a.level, signals: a.signals };
+    return { kind: days >= 2 ? "pattern" : "watch", days: days, level: a.level, signals: a.signals, cycleTagged: !!ds.cycleDays[ds.dates[i]], lutealNote: ds.settings.sex === "f" };
   }
+  var LUTEAL_NOTE = "The luteal phase of the menstrual cycle can look like this (higher skin temperature and resting HR, lower HRV).";
   var ANOMALY_CARE = "This is not a diagnosis. Seek care for fever, chest pain, shortness of breath or fainting.";
   function anomalyEpisodes(ds) {
     var flagged = [];
@@ -238,7 +252,8 @@
     return eps.map(function (e) {
       var strong = e.days.filter(function (d) { return d.level === "strong"; }).length, keys = {}; e.days.forEach(function (d) { d.signals.forEach(function (s) { keys[s.label] = true; }); });
       var notes = []; for (var k = e.startI - 1; k <= e.endI; k++) (ds.notesByDate[ds.dates[k]] || []).forEach(function (n) { notes.push(n); });
-      var explained = notes.filter(function (n) { return n.type === "alcohol" || n.type === "illness" || n.type === "travel" || n.type === "hard"; });
+      var explained = notes.filter(function (n) { return n.type === "alcohol" || n.type === "illness" || n.type === "travel" || n.type === "hard" || n.type === "cycle"; });
+      for (var kc = e.startI; kc <= e.endI; kc++) if (ds.cycleDays[ds.dates[kc]] && !explained.some(function (n) { return n.type === "cycle"; })) explained.push({ type: "cycle" });
       return { start: e.days[0].date, end: e.days[e.days.length - 1].date, length: e.days.length, kind: e.days.length >= 2 ? "pattern" : "watch", strongDays: strong, level: strong ? "strong" : "possible", signals: Object.keys(keys), notes: explained.map(function (n) { return n.type; }), matchesNote: explained.length > 0 };
     });
   }
@@ -285,5 +300,5 @@
 
   return { DEFAULTS: DEFAULTS, SERIES: SERIES, LABELS: LABELS, ZONE_NAMES: ZONE_NAMES, resolveSettings: resolveSettings, sleepClock: sleepClock, trimpSample: trimpSample, trimpFromSeries: trimpFromSeries, trimpHour: trimpHour, zoneEdges: zoneEdges, zonesFromSeries: zonesFromSeries, enrichActivity: enrichActivity,
     prepare: prepare, performanceChart: performanceChart, acwr: acwr, acwrZone: acwrZone, monotony: monotony, zScore: zScore, normalRange: normalRange, rollingBaseline: rollingBaseline, rollingBand: rollingBand, recovery: recovery, RECOVERY_WEIGHTS: RECOVERY_WEIGHTS, RECOVERY_K: RECOVERY_K,
-    sleepRegularity: sleepRegularity, socialJetLag: socialJetLag, sleepDebt: sleepDebt, dayAnomaly: dayAnomaly, anomalyStatus: anomalyStatus, ANOMALY_CARE: ANOMALY_CARE, ACWR_HIGH: ACWR_HIGH, ACWR_LOW: ACWR_LOW, estimateMaxHr: estimateMaxHr, anomalyEpisodes: anomalyEpisodes, decoupling: decoupling, hrDriftSlope: hrDriftSlope, paceStr: paceStr, personalRecords: personalRecords, weeklyZoneDistribution: weeklyZoneDistribution };
+    sleepRegularity: sleepRegularity, socialJetLag: socialJetLag, sleepDebt: sleepDebt, dayAnomaly: dayAnomaly, anomalyStatus: anomalyStatus, ANOMALY_CARE: ANOMALY_CARE, LUTEAL_NOTE: LUTEAL_NOTE, SLEEP_BONUS_CAP: SLEEP_BONUS_CAP, bCoef: bCoef, ACWR_HIGH: ACWR_HIGH, ACWR_LOW: ACWR_LOW, estimateMaxHr: estimateMaxHr, anomalyEpisodes: anomalyEpisodes, decoupling: decoupling, hrDriftSlope: hrDriftSlope, paceStr: paceStr, personalRecords: personalRecords, weeklyZoneDistribution: weeklyZoneDistribution };
 });

@@ -5,7 +5,11 @@ const S0 = { maxHr: 190, restHr: 50, sex: "m", lthr: 165 };
 
 // ---- TRIMP / zones / hrTSS
 near("Banister TRIMP, male, 150 bpm for 1 min (rest 50, max 190) = 1.8016", M.trimpSample(150, 1, S0), 1.801589, 1e-5);
-near("Banister TRIMP, female coefficient 1.67 = 1.5070", M.trimpSample(150, 1, Object.assign({}, S0, { sex: "f" })), 1.506965, 1e-5);
+const SF = Object.assign({}, S0, { sex: "f" });
+near("Banister TRIMP, female 0.86·x·e^(1.67x), 150 bpm for 1 min (x = 100/140) = 2.02498", M.trimpSample(150, 1, SF), 2.0249844, 1e-6);
+near("female one hour at LTHR (165): 60·x·0.86·e^(1.67x), x = 115/140 = 167.1008", M.trimpHour(SF), 167.1007782, 1e-4);
+near("female hrTSS of one hour at LTHR is exactly 100 (sample and hour use the same formula)", 100 * M.trimpSample(165, 60, SF) / M.trimpHour(SF), 100, 1e-9);
+near("male coefficient is 0.64 and female 0.86", M.bCoef("m") + M.bCoef("f"), 1.5, 1e-12);
 near("TRIMP of resting HR is 0", M.trimpSample(50, 10, S0), 0, 1e-12);
 near("one hour at LTHR (165) = 152.70 TRIMP → hrTSS 100", M.trimpHour(S0), 152.7023, 1e-3);
 const s200 = { maxHr: 200, restHr: 50, sex: "m", lthr: 170, zoneMode: "maxhr" };
@@ -129,5 +133,40 @@ ok("prepare() keeps day and activity counts", ds.acts.length === dd.activities.l
   eq("series-only activities also feed the estimate (≥1 h needed)", M.estimateMaxHr([{ series: sr }, { series: sr }]).value, 150);
   let jumps = 0, penalised = 0; for (let k = 29; k < ds.n; k++) { const a = M.acwr(ds.s.load, k - 1); if (a && a.ratio > M.ACWR_HIGH) { jumps++; const rc = M.recovery(ds, k); const lc = rc && rc.components.find(c => c.key === "load"); if (lc && lc.detail.penalty) penalised++; } }
   ok("recovery penalty applies exactly when ratio > 1.3 (same threshold as the advice)", jumps === 0 || penalised > 0, [jumps, penalised]);
+}
+
+// ---- review round 2: baseline contamination, cycle confounder, sleep cap
+{
+  const noise = k => ((k * 7919) % 11 - 5) / 10; // deterministic small wiggle so MAD is not zero
+  const mkIll = (len) => mk(40 + len + 5, (k) => k >= 40 && k < 40 + len ? { rhr: 63 + noise(k) * 0.5, hrv: 40 * Math.exp(noise(k) * 0.02), sleepResp: 16.5 } : { rhr: 55 + noise(k), hrv: 60 * Math.exp(noise(k) * 0.02), sleepResp: 14 + noise(k) * 0.1 });
+  for (const len of [10, 20]) {
+    const dsI = M.prepare(mkIll(len), [], [], S0);
+    const flagged = []; for (let k = 40; k < 40 + len; k++) flagged.push(!!M.dayAnomaly(dsI, k).level);
+    eq("a " + len + "-day illness-like episode keeps flagging on every day (flagged days are excluded from the baseline)", flagged.every(Boolean), true);
+    eq("…and the status counts " + len + " consecutive days", M.anomalyStatus(dsI, 39 + len).days, len);
+    eq("…and it becomes one episode of " + len + " days", [M.anomalyEpisodes(dsI).length, M.anomalyEpisodes(dsI)[0].length], [1, len]);
+    ok("recovers: the day after the episode is not flagged", !M.dayAnomaly(dsI, 40 + len).level);
+  }
+  const dsL = M.prepare(mkIll(20), [], [], S0);
+  ok("without exclusion the trailing baseline WOULD have normalised (plain z of RHR on day 59 < 1.5)", M.zScore(dsL, "rhr", 59).z < 1.5, M.zScore(dsL, "rhr", 59).z);
+  M.dayAnomaly(dsL, 59); ok("with exclusion the same day is z ≫ 1.5", M.zScore(dsL, "rhr", 59, null, true, dsL._an.flags).z > 1.5);
+  // cycle confounder
+  const SFx = Object.assign({}, S0, { sex: "f" });
+  const base2 = mk(46, k => k >= 40 && k < 44 ? { rhr: 63, hrv: 40, sleepResp: 16.5 } : { rhr: 55 + noise(k), hrv: 60 * Math.exp(noise(k) * 0.02), sleepResp: 14 });
+  const cyc = [{ id: "c1", date: base2[39].date, until: base2[45].date, type: "cycle", label: "Luteal" }];
+  const dsC = M.prepare(base2, [], cyc, SFx);
+  eq("cycle event with 'until' covers each day of the range (7 days)", Object.keys(dsC.cycleDays).length, 7);
+  eq("cycle event without 'until' covers one day", Object.keys(M.prepare(base2, [], [{ id: "c2", date: base2[41].date, type: "cycle" }], SFx).cycleDays).length, 1);
+  const stC = M.anomalyStatus(dsC, 42);
+  eq("strain pattern on a cycle day: kind pattern, cycle tagged, luteal note for sex f", [stC.kind, stC.cycleTagged, stC.lutealNote], ["pattern", true, true]);
+  eq("sex m gets no luteal line", M.anomalyStatus(M.prepare(base2, [], [], S0), 42).lutealNote, false);
+  const epC = M.anomalyEpisodes(dsC)[0]; eq("episode inside a cycle event is marked as explained by 'cycle'", [epC.matchesNote, epC.notes.indexOf("cycle") >= 0], [true, true]);
+  ok("luteal wording", /luteal phase/.test(M.LUTEAL_NOTE));
+  // sleep bonus cap
+  const sl = h => { const dd = flatDays.slice(); dd[39] = Object.assign({}, dd[39], { sleepSec: h * 3600 }); const r = M.recovery(M.prepare(dd, [], [], Object.assign({}, S0, { sleepNeedH: 7.5 })), 39); return r.components.find(c => c.key === "sleep"); };
+  eq("sleep component z is capped at +1 (12 h counts like 8.5 h)", [sl(12).z, sl(8.5).z, sl(9).z], [1, 1, 1]);
+  near("8 h (0.5 h over need) still gets its proportional +0.5", sl(8).z, 0.5, 1e-9);
+  near("a short night is NOT capped on the way down (5 h → −2.5)", sl(5).z, -2.5, 1e-9);
+  eq("the explanation text names the cap", /at most \+1/.test(sl(8).label), true);
 }
 done();

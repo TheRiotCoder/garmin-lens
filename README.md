@@ -20,7 +20,7 @@
 - **Training:** TRIMP/hrTSS from heart rate, Banister fitness/fatigue/form (CTL/ATL/TSB), rolling load ratio, monotony and strain, weekly zone distribution, best efforts, VO2max trend.
 - **Activity analytics:** aerobic decoupling (Pa:HR), cardiac drift, zone distribution, best 1 km/1 mi/5 km/10 km efforts, from FIT files.
 - **Insights:** a correlation explorer (any two measures, any lag, with sample-size and autocorrelation warnings and "correlation is not causation"), a "what affects what" scan with multiple-testing correction, event hypotheses (late workouts, alcohol/caffeine tags, hard days, stress), illness-like "body strain" signature detection, weekly/monthly reports, goals.
-- **Your events on the charts:** tag alcohol, late caffeine, travel, illness, races; they show as ▲ markers and become testable hypotheses.
+- **Your events on the charts:** tag cycle phase (treated as a confounder), alcohol, late caffeine, travel, illness, races; they show as ▲ markers and become testable hypotheses.
 - **Yours to keep:** CSV/JSON export, encrypted backups, one-tap "delete everything".
 
 Every formula is documented in [docs/METHODS.md](docs/METHODS.md) and covered by known-answer tests.

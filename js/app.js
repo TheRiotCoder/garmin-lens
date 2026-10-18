@@ -1,7 +1,7 @@
 /* Garmin Lens – app core: state, storage, import, routing, PWA plumbing. Views live in views.js / data-view.js. All data stays on this device. */
 (function () {
   "use strict";
-  var APP_VERSION = "1.0.0";
+  var APP_VERSION = "1.1.0";
   var h = GLUI.h, $ = GLUI.$, M = GLModels, I = GLInsights, S = GLStats, D = GLDates, toast = GLUI.toast;
   var state = { db: null, days: [], acts: [], notes: [], goals: [], settings: {}, ds: null, range: 90, showNotes: true, charts: [], autoMaxHr: null, hasDemo: false };
   var views = {}, App = { state: state, views: views, APP_VERSION: APP_VERSION };

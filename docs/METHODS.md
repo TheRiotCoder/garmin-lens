@@ -16,14 +16,18 @@ All of this is code in `js/models.js`, `js/insights.js` and `js/stats.js`, each 
 |---|---|---|
 | Overnight ln HRV, **7-night average** vs 28-day normal (single night only if < 4 nights) | +z | 40 % |
 | Resting HR vs 28-day normal | −z (lower is better) | 20 % |
-| Sleep duration vs your need | (hours − need)/1 h | 25 % |
+| Sleep duration vs your need | (hours − need)/1 h, **capped at +1** (oversleeping is not rewarded; short nights are not capped, floor −3) | 25 % |
 | Prior-day stress vs normal | −z | 7.5 % |
-| Training form (TSB at start of day) | TSB/20, clamped ±2.5 | 7.5 % |
+| Training form (TSB at start of day) | TSB/20 (−1 if load ratio > 1.3), clamped ±2.5 | 7.5 % |
+
+**50 means "typical for you"** (everything exactly at your own 28-day normal), not absolute fitness or health. **The form component (7.5 %) rewards being rested, so a rested but detrained state (low CTL, positive TSB) scores well** – it measures freshness, not fitness.
+
+**Why the 7-night HRV z looks small:** the 7-night average is compared with the spread (SD) of *single nights*. Averages of 7 nights vary less than single nights, so its z-score is compressed toward zero (a +0.10 ln single-night rise gives z = 0.29 instead of 2). That is deliberate: readiness should move with a sustained shift, not one noisy night. A sustained 7-night shift of +0.10 ln gives the full z = 2.
 
 Bands: green ≥ 67, yellow 34–66, red < 34. Needs HRV or resting HR plus one more signal. The factor 1.3 widens the spread because an average of several z-scores is less variable than any one. **This is not Garmin's Training Readiness or Body Battery**; those are shown separately when present in your export.
 
 ## Training load
-- **TRIMP** (Banister): per minute `x · 0.64 · e^(b·x)`, `x = (HR − rest)/(max − rest)`, `b = 1.92` (male) / `1.67` (female).
+- **TRIMP** (Banister): per minute `x · a · e^(b·x)`, `x = (HR − rest)/(max − rest)`; male `a = 0.64, b = 1.92`, female `a = 0.86, b = 1.67` (Banister 1991). The same coefficients are used for per-sample load and for the one-hour-at-threshold normaliser, so hrTSS at LTHR is 100 for either sex.
 - **hrTSS** = 100 × TRIMP / TRIMP(one hour at lactate-threshold HR). So an hour at threshold = 100.
 - Heart-rate source, best first: second-by-second FIT data (stored as a seconds-per-bpm histogram, so load can be recomputed if you change max HR) → Garmin's time-in-zone summary (zone mid-points) → average HR only (**underestimates intervals; flagged in the UI**) → no HR = no load invented.
 - **Max HR** is *estimated* from your activities (≈ 99th percentile of time-weighted heart rate, so brief sensor spikes barely count; falls back to the 95th percentile of per-activity maxima, then to a flagged placeholder of 185). The app asks you to confirm it. TRIMP/hrTSS are approximate.
@@ -66,3 +70,9 @@ Garmin assigns a night's sleep, overnight HRV and resting HR to the day you **wa
 - Stress is scored against your own baseline, not a fixed scale.
 - With several comparisons, one may look significant by chance; q-values reduce but do not remove this.
 - The importer has not been tested against a real Garmin export.
+
+## Anomaly baseline hygiene (v1.1.0)
+Each day is scored against the median/MAD of the previous 28 days **excluding days that were already flagged** (sequentially). Without this, an illness longer than about half the window drags the median up and the flag switches off while you are still unwell. If fewer than 10 clean days remain the look-back is widened to 84 days; if still fewer, nothing is flagged. Test: 10- and 20-day episodes flag every day; the plain trailing median would have stopped by day 15.
+
+## Menstrual cycle (v1.1.0)
+Skin temperature, resting HR and HRV all shift in the luteal phase. Add a **cycle** event (optionally with an "until" date) in Data → Events. Days inside a cycle event are shown as a possible explanation on flags and episodes, and cycle events are never tested as a "cause" in Insights. When sex is set to female in Settings, every strain-pattern message adds that the luteal phase can look like this.
