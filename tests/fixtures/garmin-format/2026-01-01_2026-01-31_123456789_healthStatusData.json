@@ -1,0 +1,52 @@
+[
+ {
+  "calendarDate": "2026-01-02",
+  "metrics": [
+   {
+    "type": "HRV",
+    "value": 48.0,
+    "baselineLowerLimit": 41.0,
+    "baselineUpperLimit": 58.0,
+    "status": "BALANCED"
+   },
+   {
+    "type": "HR",
+    "value": 47.0,
+    "baselineLowerLimit": 45.0,
+    "baselineUpperLimit": 50.0,
+    "status": "BALANCED"
+   },
+   {
+    "type": "SPO2",
+    "value": 95.0,
+    "status": "BALANCED"
+   },
+   {
+    "type": "SKIN_TEMP_C",
+    "value": 0.3,
+    "status": "BALANCED"
+   },
+   {
+    "type": "RESPIRATION",
+    "value": 14.2,
+    "status": "BALANCED"
+   }
+  ]
+ },
+ {
+  "calendarDate": "2026-01-03",
+  "metrics": [
+   {
+    "type": "HRV",
+    "value": 31.0,
+    "baselineLowerLimit": 41.0,
+    "baselineUpperLimit": 58.0,
+    "status": "LOW"
+   }
+  ]
+ },
+ {
+  "calendarDate": "2026-01-04",
+  "metrics": []
+ }
+]

@@ -1,0 +1,25 @@
+[
+ {
+  "calendarDate": "2026-01-02",
+  "timestamp": "2026-01-02T12:05:00.0",
+  "score": 72,
+  "level": "MODERATE",
+  "feedbackShort": "GOOD_SLEEP",
+  "sleepScoreFactorPercent": 81,
+  "recoveryTime": 600,
+  "recoveryTimeFactorPercent": 100,
+  "acwrFactorPercent": 90,
+  "stressHistoryFactorPercent": 80,
+  "hrvFactorPercent": 100,
+  "sleepHistoryFactorPercent": 75,
+  "hrvWeeklyAverage": 47.0,
+  "acuteLoad": 488.0
+ },
+ {
+  "calendarDate": "2026-01-02",
+  "timestamp": "2026-01-02T20:05:00.0",
+  "score": 65,
+  "level": "MODERATE",
+  "acuteLoad": 510.0
+ }
+]

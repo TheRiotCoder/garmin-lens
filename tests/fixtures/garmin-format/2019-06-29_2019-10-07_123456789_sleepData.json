@@ -1,0 +1,51 @@
+[
+ {
+  "sleepStartTimestampGMT": "2019-08-04T20:28:00.0",
+  "sleepEndTimestampGMT": "2019-08-05T04:30:00.0",
+  "calendarDate": "2019-08-05",
+  "sleepWindowConfirmationType": "ENHANCED_CONFIRMED_FINAL",
+  "deepSleepSeconds": 600,
+  "lightSleepSeconds": 19440,
+  "remSleepSeconds": 8460,
+  "awakeSleepSeconds": 420,
+  "unmeasurableSeconds": 0,
+  "retro": false
+ },
+ {
+  "sleepStartTimestampGMT": "2019-08-03T20:00:00.0",
+  "sleepEndTimestampGMT": "2019-08-04T04:00:00.0",
+  "calendarDate": "2019-08-04",
+  "sleepWindowConfirmationType": "UNCONFIRMED",
+  "retro": false
+ },
+ {
+  "sleepStartTimestampGMT": "2022-03-15T05:10:00.0",
+  "sleepEndTimestampGMT": "2022-03-15T12:40:00.0",
+  "calendarDate": "2022-03-15",
+  "sleepWindowConfirmationType": "ENHANCED_CONFIRMED_FINAL",
+  "deepSleepSeconds": 4500,
+  "lightSleepSeconds": 14400,
+  "remSleepSeconds": 6300,
+  "awakeSleepSeconds": 1800,
+  "unmeasurableSeconds": 0,
+  "retro": false,
+  "averageRespiration": 14.0,
+  "lowestRespiration": 10.0,
+  "highestRespiration": 19.0,
+  "awakeCount": 2,
+  "avgSleepStress": 13.0,
+  "restlessMomentCount": 38,
+  "sleepScores": {
+   "overallScore": 82,
+   "qualityScore": 80,
+   "durationScore": 85,
+   "recoveryScore": 78,
+   "deepScore": 84,
+   "remScore": 90,
+   "lightScore": 79,
+   "restfulnessScore": 75,
+   "feedback": "POSITIVE_LONG_AND_DEEP",
+   "insight": "NONE"
+  }
+ }
+]

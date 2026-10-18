@@ -1,0 +1,13 @@
+[
+ {
+  "calendarDate": "2026-01-05",
+  "sport": "RUNNING",
+  "vo2MaxValue": 51.0,
+  "activityId": 900000001
+ },
+ {
+  "calendarDate": "2026-01-06",
+  "sport": "CYCLING",
+  "vo2MaxValue": 54.0
+ }
+]

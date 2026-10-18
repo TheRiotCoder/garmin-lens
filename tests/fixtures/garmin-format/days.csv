@@ -1,0 +1,4 @@
+Date,Resting HR,HRV,Sleep Hours,Steps,Stress
+2026-01-01,48,52,7.5,9000,30
+2026-01-02,50,,6.25,12000,41
+bad-date,1,2,3,4,5

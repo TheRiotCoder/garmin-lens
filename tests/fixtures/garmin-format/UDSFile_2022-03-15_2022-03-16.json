@@ -1,0 +1,231 @@
+[
+ {
+  "userProfilePK": 0,
+  "calendarDate": {
+   "date": "Mar 15, 2022 12:00:00 AM"
+  },
+  "uuid": "00000000-0000-0000-0000-000000000000",
+  "durationInMilliseconds": 86400000,
+  "totalKilocalories": 2237.0,
+  "activeKilocalories": 7.0,
+  "bmrKilocalories": 2230.0,
+  "wellnessKilocalories": 2237.0,
+  "remainingKilocalories": 2237.0,
+  "wellnessTotalKilocalories": 2237.0,
+  "wellnessActiveKilocalories": 7.0,
+  "totalSteps": 879,
+  "dailyStepGoal": 4000,
+  "netCalorieGoal": 3039,
+  "totalDistanceMeters": 724,
+  "wellnessDistanceMeters": 724,
+  "wellnessStartTimeGmt": {
+   "date": "Mar 14, 2022 11:00:00 PM"
+  },
+  "wellnessEndTimeGmt": {
+   "date": "Mar 15, 2022 11:00:00 PM"
+  },
+  "wellnessStartTimeLocal": {
+   "date": "Mar 15, 2022 12:00:00 AM"
+  },
+  "wellnessEndTimeLocal": {
+   "date": "Mar 16, 2022 12:00:00 AM"
+  },
+  "highlyActiveSeconds": 172,
+  "activeSeconds": 113,
+  "moderateIntensityMinutes": 0,
+  "vigorousIntensityMinutes": 0,
+  "floorsAscendedInMeters": 6.48,
+  "floorsDescendedInMeters": 2.654,
+  "userIntensityMinutesGoal": 300,
+  "userFloorsAscendedGoal": 10,
+  "minHeartRate": 37,
+  "maxHeartRate": 76,
+  "restingHeartRate": 39,
+  "currentDayRestingHeartRate": 38,
+  "restingHeartRateTimestamp": "Mar 15, 2022 11:00:00 PM",
+  "includesWellnessData": true,
+  "includesActivityData": false,
+  "includesCalorieConsumedData": false,
+  "includesSingleMeasurement": false,
+  "includesContinuousMeasurement": false,
+  "includesAllDayPulseOx": true,
+  "includesSleepPulseOx": false,
+  "source": 0,
+  "allDayStress": {
+   "userProfilePK": 0,
+   "calendarDate": {
+    "date": "Mar 15, 2022 12:00:00 AM"
+   },
+   "aggregatorList": [
+    {
+     "type": "TOTAL",
+     "averageStressLevel": 16,
+     "averageStressLevelIntensity": 16,
+     "maxStressLevel": 75,
+     "stressIntensityCount": 1351,
+     "stressOffWristCount": 29,
+     "stressTooActiveCount": 59,
+     "totalStressCount": 1439,
+     "totalStressIntensity": 48634,
+     "stressDuration": 8640,
+     "restDuration": 72420,
+     "activityDuration": 3540,
+     "uncategorizedDuration": 1740,
+     "totalDuration": 86340,
+     "lowDuration": 8520,
+     "mediumDuration": 120
+    },
+    {
+     "type": "AWAKE",
+     "averageStressLevel": 17,
+     "averageStressLevelIntensity": 17,
+     "maxStressLevel": 75,
+     "stressIntensityCount": 798,
+     "stressOffWristCount": 23,
+     "stressTooActiveCount": 46,
+     "totalStressCount": 867,
+     "totalStressIntensity": 26099,
+     "stressDuration": 5460,
+     "restDuration": 42420,
+     "activityDuration": 2760,
+     "uncategorizedDuration": 1380,
+     "totalDuration": 52020,
+     "lowDuration": 5340,
+     "mediumDuration": 120
+    },
+    {
+     "type": "ASLEEP",
+     "averageStressLevel": 15,
+     "averageStressLevelIntensity": 15,
+     "maxStressLevel": 41,
+     "stressIntensityCount": 553,
+     "stressOffWristCount": 6,
+     "stressTooActiveCount": 13,
+     "totalStressCount": 572,
+     "totalStressIntensity": 22535,
+     "stressDuration": 3180,
+     "restDuration": 30000,
+     "activityDuration": 780,
+     "uncategorizedDuration": 360,
+     "totalDuration": 34320,
+     "lowDuration": 3180
+    }
+   ]
+  },
+  "bodyBattery": {
+   "userProfilePK": 0,
+   "calendarDate": {
+    "date": "Mar 15, 2022 12:00:00 AM"
+   },
+   "chargedValue": 46,
+   "drainedValue": 33,
+   "bodyBatteryVersion": 1.0,
+   "bodyBatteryStatList": [
+    {
+     "bodyBatteryStatType": "HIGHEST",
+     "statsValue": 100,
+     "bodyBatteryStatus": "MEASURED",
+     "statTimestamp": {
+      "date": "Mar 15, 2022 4:38:00 PM"
+     }
+    },
+    {
+     "bodyBatteryStatType": "LOWEST",
+     "statsValue": 66,
+     "bodyBatteryStatus": "MEASURED",
+     "statTimestamp": {
+      "date": "Mar 15, 2022 12:13:00 AM"
+     }
+    },
+    {
+     "bodyBatteryStatType": "MOSTRECENT",
+     "statsValue": 83,
+     "bodyBatteryStatus": "MEASURED",
+     "statTimestamp": {
+      "date": "Mar 15, 2022 11:00:00 PM"
+     }
+    },
+    {
+     "bodyBatteryStatType": "ENDOFDAY",
+     "statsValue": 83,
+     "bodyBatteryStatus": "MEASURED",
+     "statTimestamp": {
+      "date": "Mar 15, 2022 11:00:00 PM"
+     }
+    }
+   ]
+  },
+  "minAvgHeartRate": 38,
+  "maxAvgHeartRate": 72,
+  "version": 61500004,
+  "averageSpo2Value": 96.0,
+  "lowestSpo2Value": 93,
+  "latestSpo2Value": 97,
+  "latestSpo2ValueReadingTimeGmt": {
+   "date": "Mar 15, 2022 11:00:00 PM"
+  },
+  "latestSpo2ValueReadingTimeLocal": {
+   "date": "Mar 16, 2022 12:00:00 AM"
+  },
+  "respiration": {
+   "userProfilePK": 0,
+   "calendarDate": {
+    "date": "Mar 15, 2022 12:00:00 AM"
+   },
+   "avgWakingRespirationValue": 15.0,
+   "highestRespirationValue": 22.0,
+   "lowestRespirationValue": 9.0,
+   "latestRespirationValue": 14.0
+  }
+ },
+ {
+  "calendarDate": "2022-03-16",
+  "totalSteps": 10432,
+  "dailyStepGoal": 8000,
+  "totalDistanceMeters": 8200,
+  "totalKilocalories": 2650.0,
+  "activeKilocalories": 420.0,
+  "moderateIntensityMinutes": 31,
+  "vigorousIntensityMinutes": 12,
+  "floorsAscendedInMeters": 30.48,
+  "minHeartRate": 40,
+  "maxHeartRate": 151,
+  "restingHeartRate": 41,
+  "wellnessStartTimeGmt": {
+   "date": "Mar 15, 2022 11:00:00 PM"
+  },
+  "wellnessStartTimeLocal": {
+   "date": "Mar 16, 2022 12:00:00 AM"
+  },
+  "allDayStress": {
+   "aggregatorList": [
+    {
+     "type": "TOTAL",
+     "averageStressLevel": -1,
+     "maxStressLevel": -1
+    }
+   ]
+  },
+  "bodyBattery": {
+   "chargedValue": 58,
+   "drainedValue": 61,
+   "bodyBatteryStatList": [
+    {
+     "bodyBatteryStatType": "HIGHEST",
+     "statsValue": 92
+    },
+    {
+     "bodyBatteryStatType": "LOWEST",
+     "statsValue": -1
+    }
+   ]
+  },
+  "avgWakingRespirationValue": 14.0
+ },
+ {
+  "hydration": {
+   "calendarDate": "2022-03-15",
+   "valueInML": 1500
+  }
+ }
+]

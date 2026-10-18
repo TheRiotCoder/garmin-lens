@@ -1,0 +1,75 @@
+[
+ {
+  "summarizedActivitiesExport": [
+   {
+    "activityId": 900000001,
+    "name": "Morning Run",
+    "activityType": "running",
+    "userProfileId": 0,
+    "timeZoneId": 0,
+    "beginTimestamp": 1767344400000,
+    "eventTypeId": 9,
+    "rule": "public",
+    "sportType": "RUNNING",
+    "startTimeGmt": 1767344400000.0,
+    "startTimeLocal": 1767322800000.0,
+    "duration": 3000000.0,
+    "distance": 900000.0,
+    "avgSpeed": 0.3,
+    "avgHr": 150.0,
+    "maxHr": 172.0,
+    "minHr": 98.0,
+    "steps": 5100.0,
+    "calories": 620.5,
+    "bmrCalories": 80.1,
+    "elevationGain": 4500.0,
+    "aerobicTrainingEffect": 3.4000000953674316,
+    "anaerobicTrainingEffect": 0.8,
+    "elapsedDuration": 3100000.0,
+    "movingDuration": 2990000.0,
+    "manufacturer": "GARMIN",
+    "lapCount": 9
+   },
+   {
+    "activityId": 21566718030,
+    "name": "Musculation",
+    "activityType": "strength_training",
+    "userProfileId": 0,
+    "timeZoneId": 0,
+    "beginTimestamp": 1768573620000,
+    "eventTypeId": 9,
+    "rule": "groups",
+    "sportType": "TRAINING",
+    "startTimeGmt": 1768573620000.0,
+    "startTimeLocal": 1768577220000.0,
+    "duration": 4709575.0,
+    "distance": 0.0,
+    "avgSpeed": 0.0,
+    "avgHr": 138.0,
+    "maxHr": 172.0,
+    "minHr": 77.0,
+    "steps": 1564.0,
+    "calories": 2568.4822599999998,
+    "bmrCalories": 456.71217999999993,
+    "aerobicTrainingEffect": 3.200000047683716,
+    "anaerobicTrainingEffect": 1.600000023841858,
+    "elapsedDuration": 4705549.8046875,
+    "movingDuration": 1836671.9970703125,
+    "deviceId": 3355476790,
+    "minTemperature": 27.0,
+    "maxTemperature": 30.0,
+    "summarizedExerciseSets": [
+     {
+      "category": "SQUAT",
+      "subCategory": "LEG_PRESS",
+      "reps": 50,
+      "volume": 3600000,
+      "duration": 132548.00033569336,
+      "sets": 5,
+      "maxWeight": 80000
+     }
+    ]
+   }
+  ]
+ }
+]

@@ -1,0 +1,16 @@
+[
+ {
+  "metaData": {
+   "calendarDate": "2026-01-04T08:00:00.0"
+  },
+  "weight": {
+   "weight": 78400.0
+  },
+  "height": 1.8,
+  "lactateThreshold": {
+   "heartRate": 168,
+   "speed": 0.37
+  }
+ },
+ {}
+]

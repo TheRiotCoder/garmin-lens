@@ -1,0 +1,10 @@
+[
+ {
+  "calendarDate": 1767312000000,
+  "timestamp": 1767340000000,
+  "dailyTrainingLoadAcute": 488,
+  "dailyTrainingLoadChronic": 520,
+  "dailyAcuteChronicWorkloadRatio": 0.9,
+  "acwrStatus": "OPTIMAL"
+ }
+]
