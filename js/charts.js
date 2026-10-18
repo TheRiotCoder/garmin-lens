@@ -191,9 +191,8 @@
     this.drawGrid(ctx, pal, { l: L.l, r: L.r, t: L.t, b: L.b, w: W, h: H }, sy, spec.yFmt, "left");
     ctx.fillStyle = pal.muted; ctx.textAlign = "center"; sx.ticks.forEach(function (t) { ctx.fillText(spec.xFmt ? spec.xFmt(t) : fmtNum(t), X(t), H - L.b + 12); });
     ctx.fillText(spec.xLabel || "", L.l + pw / 2, H - 7); ctx.save(); ctx.translate(11, L.t + ph / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(spec.yLabel || "", 0, 0); ctx.restore();
-    var col = resolveColor(spec.color || "c1", pal, 0), hot = this.hover; this.sp = [];
-    pts.forEach(function (p, i) { var x = X(p.x), y = Y(p.y); self_sp(i, x, y); ctx.fillStyle = rgba(col, p.dim ? 0.2 : 0.55); ctx.beginPath(); ctx.arc(x, y, 3.4, 0, 6.2832); ctx.fill(); });
-    var self = this; function self_sp(i, x, y) { self.sp.push([x, y, i]); }
+    var col = resolveColor(spec.color || "c1", pal, 0), hot = this.hover, self = this; this.sp = [];
+    pts.forEach(function (p, i) { var x = X(p.x), y = Y(p.y); self.sp.push([x, y, i]); ctx.fillStyle = rgba(col, p.dim ? 0.2 : 0.55); ctx.beginPath(); ctx.arc(x, y, 3.4, 0, 6.2832); ctx.fill(); });
     if (spec.fit) { ctx.strokeStyle = pal.fg; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]); var x0 = sx.min, x1 = sx.max; ctx.beginPath(); ctx.moveTo(X(x0), Y(spec.fit.intercept + spec.fit.slope * x0)); ctx.lineTo(X(x1), Y(spec.fit.intercept + spec.fit.slope * x1)); ctx.save(); ctx.beginPath(); ctx.rect(L.l, L.t, pw, ph); ctx.clip(); ctx.stroke(); ctx.restore(); ctx.setLineDash([]); }
     if (hot !== null && pts[hot]) { var p = pts[hot], hx = X(p.x), hy = Y(p.y); ctx.strokeStyle = pal.fg; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, hy, 6, 0, 6.2832); ctx.stroke(); this.tooltip(ctx, pal, [p.date || "", (spec.xName || "x") + "  " + fmtNum(p.x), (spec.yName || "y") + "  " + fmtNum(p.y)], [null, null, null], hx, L, W); }
   };

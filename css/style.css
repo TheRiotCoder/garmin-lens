@@ -33,7 +33,7 @@ main{max-width:860px;margin:0 auto;padding:10px;min-width:0}
 select.inp{appearance:auto}
 .inp:focus,.btn:focus-visible,.chip:focus-visible,a:focus-visible,canvas:focus-visible,summary:focus-visible,.lg:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.btn{font:inherit;min-height:44px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}
+.btn{font:inherit;min-height:44px;min-width:44px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}
 .btn.primary{background:var(--acc2);border-color:var(--acc2);color:#fff}
 .btn.danger{border-color:var(--bad);color:var(--bad)}
 .btn.block{display:block;width:100%}
@@ -75,8 +75,8 @@ a.row{display:flex;align-items:center;gap:10px;min-height:56px;padding:6px 2px;b
 a.row:first-child{border-top:0}
 a.row .main{flex:1;min-width:0}a.row .main b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 a.row .end{text-align:right;font-size:.85rem;white-space:nowrap}
-table.t{width:100%;border-collapse:collapse;font-size:.85rem}
-table.t th,table.t td{padding:5px 4px;border-bottom:1px solid var(--line);text-align:right}
+table.t{width:100%;border-collapse:collapse;font-size:.82rem}
+table.t th,table.t td{padding:5px 3px;border-bottom:1px solid var(--line);text-align:right}
 table.t th:first-child,table.t td:first-child{text-align:left}
 table.t th{color:var(--muted);font-weight:600}
 .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -106,3 +106,4 @@ details.how ol{margin:4px 0 8px 1.2em;padding:0}details.how li{margin:4px 0}
 .sr{position:absolute;left:-9999px}
 .welcome{text-align:center;padding:10px 4px}.welcome h2{font-size:1.3rem}
 @media print{.top,.tabs,.demo-bar,.actions,.install{display:none}body{padding:0}}
+[hidden]{display:none!important}

@@ -1,0 +1,20 @@
+# Cloudflare static-assets headers (Workers static assets / Pages syntax) – NOT used by GitHub Pages (which cannot set headers), kept ready for a Cloudflare deploy.
+# The CSP matches the <meta> CSP in index.html and adds what a meta tag cannot carry: frame-ancestors. Keep the two identical (tests/shell.test.js checks that).
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=(), serial=(), bluetooth=()
+
+# the service worker and the shell must always be revalidated so a release is picked up at once
+/sw.js
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+/
+  Cache-Control: no-cache
