@@ -64,7 +64,11 @@
     var o = Object.assign({}, a); delete o.series;
     o.group = P.sportGroup(a.type);
     var tr = null, src = "none", z = null;
-    if (series && series.hr && series.hr.some(function (x) { return x > 20; })) { tr = trimpFromSeries(series.hr, series.step || 5, s); src = "series"; z = zonesFromSeries(series.hr, series.step || 5, s); }
+    if (a.hrHist && a.hrStep) { // compact histogram stored with the activity (see importer.addHrHist)
+      var e0 = zoneEdges(s), zz0 = [0, 0, 0, 0, 0, 0], t0 = 0, m0 = a.hrStep / 60;
+      for (var hbpm = 21; hbpm < a.hrHist.length; hbpm++) { var cnt = a.hrHist[hbpm]; if (!cnt) continue; t0 += trimpSample(hbpm, cnt * m0, s); zz0[zoneOf(hbpm, e0)] += cnt * a.hrStep; }
+      tr = t0; src = "series"; z = zz0;
+    } else if (series && series.hr && series.hr.some(function (x) { return x > 20; })) { tr = trimpFromSeries(series.hr, series.step || 5, s); src = "series"; z = zonesFromSeries(series.hr, series.step || 5, s); }
     else if (a.zoneSec && a.zoneSec.length === 5) { var e = zoneEdges(s), mids = [0.55, 0.65, 0.75, 0.85, 0.95]; tr = 0; a.zoneSec.forEach(function (sec, i) { tr += trimpSample(mids[i] * s.maxHr, sec / 60, s); }); src = "zones"; z = [0].concat(a.zoneSec); }
     else if (ok(a.avgHr) && ok(a.durationSec)) { tr = trimpSample(a.avgHr, (a.movingSec || a.durationSec) / 60, s); src = "avg"; var zz = [0, 0, 0, 0, 0, 0]; zz[zoneOf(a.avgHr, zoneEdges(s))] = a.durationSec; z = zz; }
     if (tr !== null) { o.trimp = Math.round(tr * 10) / 10; o.hrtss = Math.round(100 * tr / trimpHour(s) * 10) / 10; }

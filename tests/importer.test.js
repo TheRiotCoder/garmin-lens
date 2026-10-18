@@ -31,6 +31,7 @@ PY`);
   ok("day merged from UDS + sleep + health status", d0.rhr === s0.rhr && d0.sleepSec === s0.sleepSec && Math.abs((d0.hrv || 0) - (s0.hrv || 0)) < 1.5 && d0.steps === s0.steps, { rhr: [d0.rhr, s0.rhr], hrv: [d0.hrv, s0.hrv], sleep: [d0.sleepSec, s0.sleepSec] });
   ok("demo flag does not leak into parsed real-format files", !r.stats.demo || r.days.every(d => d.demo === undefined || d.demo === true));
   ok("activities from summary all present", r.activities.filter(a => a.source !== "fit").length >= demo.activities.length, r.activities.length);
+  ok("activities with a series carry an HR histogram (so load can be recomputed for any max HR)", r.activities.filter(a => a.series && a.series.hr).every(a => a.hrHist ? a.hrHist.reduce((x, y) => x + y, 0) > 0 : !a.series.hr.some(v => v > 20)) && r.activities.some(a => a.hrHist));
   const old = r.activities.find(a => a.date === "2017-06-11" || a.name === "Old run");
   ok("old summary linked to FIT detail (within 120 s) = one merged activity with series", old && old.source === "summary+fit" && !!old.series, old && old.source);
   eq("only one activity near 2017-06-11 (no duplicate)", r.activities.filter(a => a.start > 1497191000000 && a.start < 1497192000000).length, 1);

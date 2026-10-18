@@ -103,11 +103,20 @@
       var dup = out.some(function (a) { return a.date === c.date && P.sportGroup(a.type) === P.sportGroup(c.type) && (!a.durationSec || !c.durationSec || Math.abs(a.durationSec - c.durationSec) / c.durationSec < 0.15); });
       if (!dup) out.push(c);
     });
+    out.forEach(addHrHist);
     out.sort(function (a, b) { return a.start - b.start; });
     var days = Object.keys(this.days).sort().map(function (k) { return this.days[k]; }, this);
     // days that only exist because of an activity are not created here (analysis handles activity-only days)
     return { days: days, activities: out, annotations: this.annotations, goals: this.goals, stats: this.stats };
   };
+  // seconds-per-bpm histogram of an activity's heart rate: lets load/zone numbers be recomputed for any max HR without keeping the whole series in memory
+  function addHrHist(a) {
+    if (!a || !a.series || !a.series.hr || a.hrHist) return a;
+    var h = new Array(251), i, any = false; for (i = 0; i < 251; i++) h[i] = 0;
+    for (i = 0; i < a.series.hr.length; i++) { var v = a.series.hr[i]; if (v > 20 && v <= 250) { h[v] += 1; any = true; } }
+    if (any) { a.hrHist = h; a.hrStep = a.series.step || 5; }
+    return a;
+  }
   function create(opts) { return new Importer(opts); }
-  return { create: create, mergeDay: mergeDay, mergeActivity: mergeActivity };
+  return { create: create, mergeDay: mergeDay, mergeActivity: mergeActivity, addHrHist: addHrHist };
 });

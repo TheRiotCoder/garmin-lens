@@ -12,6 +12,8 @@ const s200 = { maxHr: 200, restHr: 50, sex: "m", lthr: 170, zoneMode: "maxhr" };
 eq("zone seconds from HR series (edges 100/120/140/160/180)", M.zonesFromSeries([90, 100, 119, 120, 150, 179, 180, 199, 0], 5, s200), [5, 10, 5, 5, 5, 10]);
 const act = M.enrichActivity({ id: "x", type: "running", durationSec: 3600, avgHr: 150 }, { hr: new Array(720).fill(165), step: 5 }, S0);
 near("an hour at exactly LTHR scores hrTSS 100 (from series)", act.hrtss, 100, 0.2); eq("source tag 'series'", act.loadSource, "series");
+const hist = new Array(251).fill(0); hist[165] = 720; const ah = M.enrichActivity({ id: "h", type: "running", durationSec: 3600, hrHist: hist, hrStep: 5 }, null, S0);
+near("HR histogram gives the same load as the raw series", ah.hrtss, act.hrtss, 1e-6); eq("histogram zones: all time in Z4 (80–90%: 152–171 bpm)", ah.zoneSecAll, [0, 0, 0, 0, 3600, 0]);
 const a2 = M.enrichActivity({ id: "y", type: "running", durationSec: 1800, avgHr: 150 }, null, S0);
 eq("avg-HR fallback tagged 'avg'", a2.loadSource, "avg"); near("avg HR fallback TRIMP = 30 × 1.8016", a2.trimp, 54.0, 0.1);
 const a3 = M.enrichActivity({ id: "z", type: "yoga", durationSec: 1800 }, null, S0);
