@@ -5,7 +5,7 @@
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:calc(76px + env(safe-area-inset-bottom));overflow-x:hidden}
-body.has-banner{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+body.has-banner{padding-bottom:calc(var(--banner-h, 86px) + 76px + env(safe-area-inset-bottom))}
 .top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:6px;background:var(--hdr);color:var(--hdrfg);padding:calc(6px + env(safe-area-inset-top)) 8px 6px;box-shadow:0 2px 8px #0005}
 .top h1{flex:1;margin:0 0 0 4px;font-size:1.15rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .hb{min-width:44px;min-height:44px;border:0;background:transparent;color:inherit;font-size:1.4rem;border-radius:10px;cursor:pointer}
@@ -107,3 +107,5 @@ details.how ol{margin:4px 0 8px 1.2em;padding:0}details.how li{margin:4px 0}
 .welcome{text-align:center;padding:10px 4px}.welcome h2{font-size:1.3rem}
 @media print{.top,.tabs,.demo-bar,.actions,.install{display:none}body{padding:0}}
 [hidden]{display:none!important}
+body.has-banner .toast{bottom:calc(var(--banner-h, 100px) + 76px + env(safe-area-inset-bottom))}
+.install a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}

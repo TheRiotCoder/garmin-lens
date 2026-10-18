@@ -126,4 +126,35 @@ const byDate = (r, d) => r.days.find(x => x.date === d);
   ok("bundle: valid rows kept, invalid dropped", bun.kind === "bundle" && bun.days.length === 1 && bun.activities.length === 1 && bun.annotations.length === 1);
   throws("bundle with wrong format rejected", () => P.parseBundle({ format: "other" }), /Not a Garmin Lens bundle/);
 }
+
+// ---------- v1.2: odd shapes, fallbacks, sanity checks, skipped folders
+{
+  const D = require("../js/dates.js");
+  eq("calendarDate as {year, month, day} (month 1-12)", D.dayKey({ year: 2023, month: 4, day: 9 }), "2023-04-09");
+  eq("calendarDate {monthValue, dayOfMonth} too", D.dayKey({ year: 2023, monthValue: 12, dayOfMonth: 31 }), "2023-12-31");
+  eq("garbage object -> null", D.dayKey({ year: 1, month: 99, day: 0 }), null);
+  const act = (t, extra) => P.parseSummarized([{ summarizedActivitiesExport: [Object.assign({ activityId: 1, startTimeGmt: 1497191649000, duration: 3600000, distance: 1000000, avgHr: 150, activityType: t }, extra || {})] }]).activities[0];
+  eq("activityType as string", act("running").type, "running");
+  eq("activityType as object {typeKey}", act({ typeId: 1, typeKey: "Trail_Running", parentTypeId: 17 }).type, "trail_running");
+  eq("activityType missing -> sportType fallback, else other", [act(undefined, { sportType: "CYCLING" }).type, act(undefined).type], ["cycling", "other"]);
+  eq("activityType object without key -> other (never '[object object]')", act({ typeId: 9 }).type, "other");
+  const wrapped = P.parseSleep([{ dailySleepDTO: { calendarDate: { year: 2026, month: 3, day: 5 }, sleepStartTimestampGMT: "2026-03-05T04:00:00.0", sleepEndTimestampGMT: "2026-03-05T12:00:00.0", deepSleepSeconds: 5400, lightSleepSeconds: 16200, remSleepSeconds: 5400, awakeSleepSeconds: 600, sleepScores: { overall: { value: 81 } }, averageRespirationValue: 14.2 }, avgOvernightHrv: 52.5 }]);
+  const wd = wrapped.days[0]; eq("dailySleepDTO wrapper: date, duration, score, respiration, HRV", [wd.date, wd.sleepSec, wd.sleepScore, wd.sleepResp, wd.hrvSleep], ["2026-03-05", 27000, 81, 14.2, 52.5]);
+  const flat = P.parseSleep([{ calendarDate: "2026-03-06", deepSleepSeconds: 3600, lightSleepSeconds: 18000, remSleepSeconds: 3600, avgOvernightHrv: 47 }]).days[0]; eq("flat sleep record: avgOvernightHrv -> hrvSleep", flat.hrvSleep, 47);
+  eq("avgOvernightHrv absent -> no hrvSleep key", "hrvSleep" in P.parseSleep([{ calendarDate: "2026-03-06", deepSleepSeconds: 3600, lightSleepSeconds: 18000 }]).days[0], false);
+  const ms = P.parseSleep([{ calendarDate: "2026-03-07", deepSleepSeconds: 5400000, lightSleepSeconds: 16200000, remSleepSeconds: 5400000, awakeSleepSeconds: 600000 }]);
+  eq("sleep stages in ms are converted (7.5 h) with a warning", [ms.days[0].sleepSec, ms.warnings.length], [27000, 1]);
+  const bad = P.parseFile({ name: "UDSFile_x.json", text: JSON.stringify([{ calendarDate: "2026-03-08", totalSteps: 12000000, restingHeartRate: 300, minHeartRate: 48, maxHeartRate: 160, averageSpo2Value: 97, avgWakingRespirationValue: 15 }]) });
+  const bd = bad.days[0]; eq("implausible steps (12 000 000) and resting HR (300) dropped; sane fields kept", ["steps" in bd, "rhr" in bd, bd.minHr, bd.maxHr, bd.spo2Avg, bd.respAvg], [false, false, 48, 160, 97, 15]);
+  ok("a warning names the dropped fields", /Ignored 2 value\(s\) outside a plausible range \(.*(steps|rhr)/.test(bad.warnings.join(" ")), bad.warnings);
+  const ba = P.parseFile({ name: "x_summarizedActivities.json", text: JSON.stringify([{ summarizedActivitiesExport: [{ activityId: 7, startTimeGmt: 1497191649000, duration: 99999999999, distance: 1000000, avgHr: 150, activityType: "running" }] }]) });
+  eq("activity with an absurd duration (> 7 days) loses the duration, keeps the rest", ["durationSec" in ba.activities[0], ba.activities[0].avgHr, ba.activities[0].distanceM], [false, 150, 10000]);
+  const good = P.parseFile({ name: "UDSFile_y.json", text: JSON.stringify([{ calendarDate: "2026-03-09", totalSteps: 0, restingHeartRate: 52, totalKilocalories: 2300 }]) });
+  eq("sane data produces no sanity warning (0 steps is legal)", [good.warnings.length, good.days[0].steps], [0, 0]);
+  const sk = P.isSkippedFolder;
+  eq("skipped: account, customer-service, user, social, payment, content, device, golf folders", ["DI_CONNECT/DI-Connect-Account/a.json", "DI_CONNECT/DI-Connect-Customer-Service/a.json", "x/DI-Connect-User/a.json", "x/DI-Connect-Social/a.json", "x/DI-Connect-Payment/a.json", "x/DI-Connect-Content/a.json", "x/DI-Connect-Device/a.json", "x/Golf/a.json", "x/DI-Connect-Golf/a.json"].map(sk), Array(9).fill(true));
+  eq("not skipped: fitness, metrics, wellness, aggregator, uploaded files", ["DI_CONNECT/DI-Connect-Fitness/a.json", "DI_CONNECT/DI-Connect-Metrics/a.json", "DI_CONNECT/DI-Connect-Wellness/a.json", "DI_CONNECT/DI-Connect-Aggregator/UDSFile_1.json", "DI_CONNECT/DI-Connect-Uploaded-Files/a.json", "UDSFile_1.json"].map(sk), Array(6).fill(false));
+  eq("a file NAME containing 'user' does not skip (folders only)", sk("DI_CONNECT/DI-Connect-Fitness/user_summarizedActivities.json"), false);
+}
+
 done();

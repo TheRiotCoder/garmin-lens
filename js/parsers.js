@@ -71,16 +71,22 @@
     return null;
   }
   function parseSleep(data) {
-    var byDate = {};
-    arr(data).forEach(function (r) {
-      if (!r || typeof r !== "object") return;
-      var date = D.dayKey(r.calendarDate) || (r.sleepEndTimestampGMT ? D.dayKey(r.sleepEndTimestampGMT) : null); if (!date) return;
+    var byDate = {}, warnings1 = [];
+    arr(data).forEach(function (r0) {
+      if (!r0 || typeof r0 !== "object") return;
+      // some exports wrap the night as {dailySleepDTO: {...}, avgOvernightHrv, ...}: read the inner record, keep the outer extras
+      var r = r0.dailySleepDTO && typeof r0.dailySleepDTO === "object" ? Object.assign({}, r0, r0.dailySleepDTO) : r0;
+      var date = D.dayKey(r.calendarDate) || D.dayKey(r.calendarDate && r.calendarDate.date) || (r.sleepEndTimestampGMT ? D.dayKey(r.sleepEndTimestampGMT) : null); if (!date) return;
       var d = { date: date };
       var st = D.instant(r.sleepStartTimestampGMT), en = D.instant(r.sleepEndTimestampGMT);
       var stL = D.instant(r.sleepStartTimestampLocal), enL = D.instant(r.sleepEndTimestampLocal);
       put(d, "sleepStart", st); put(d, "sleepEnd", en);
       if (st !== null && stL !== null) d.sleepTzOffsetMin = Math.round((stL - st) / 60000);
       var deep = nn(r.deepSleepSeconds), light = nn(r.lightSleepSeconds), rem = nn(r.remSleepSeconds), awake = nn(r.awakeSleepSeconds);
+      if (Math.max(deep || 0, light || 0, rem || 0, awake || 0) > 86400) { // a stage longer than 24 h in "seconds": the file is probably in milliseconds
+        var big = [deep, light, rem, awake].map(function (x) { return x === null ? null : x / 1000; });
+        if (Math.max.apply(null, big.map(function (x) { return x || 0; })) <= 86400) { deep = big[0]; light = big[1]; rem = big[2]; awake = big[3]; warnings1.push("Sleep stage durations looked like milliseconds; converted to seconds."); }
+      }
       var confirmed = String(r.sleepWindowConfirmationType || "").toUpperCase() !== "UNCONFIRMED" && (deep !== null || light !== null || rem !== null);
       if (confirmed) {
         put(d, "deepSec", deep); put(d, "lightSec", light); put(d, "remSec", rem); put(d, "awakeSec", awake);
@@ -88,14 +94,14 @@
       } else d.sleepUnconfirmed = true;
       var sc = r.sleepScores || {};
       put(d, "sleepScore", sleepScore(sc)); put(d, "sleepScoreDuration", pos(sc.durationScore)); put(d, "sleepScoreRecovery", pos(sc.recoveryScore)); put(d, "sleepScoreRestful", pos(sc.restfulnessScore)); put(d, "sleepScoreDeep", pos(sc.deepScore)); put(d, "sleepScoreRem", pos(sc.remScore));
-      put(d, "sleepResp", pos(r.averageRespiration)); put(d, "sleepRespLow", pos(r.lowestRespiration)); put(d, "sleepRespHigh", pos(r.highestRespiration));
+      put(d, "hrvSleep", pos(r.avgOvernightHrv != null ? r.avgOvernightHrv : r0.avgOvernightHrv)); put(d, "sleepResp", pos(r.averageRespiration != null ? r.averageRespiration : r.averageRespirationValue)); put(d, "sleepRespLow", pos(r.lowestRespiration)); put(d, "sleepRespHigh", pos(r.highestRespiration));
       put(d, "sleepStress", nn(r.avgSleepStress)); put(d, "awakeCount", nn(r.awakeCount)); put(d, "restless", nn(r.restlessMomentCount));
       var sp = r.spo2SleepSummary || r.spo2Summary || null; if (sp) { put(d, "sleepSpo2", pos(sp.averageSPO2 != null ? sp.averageSPO2 : sp.avg != null ? sp.avg : sp.averageSpO2)); put(d, "sleepSpo2Low", pos(sp.lowestSPO2 != null ? sp.lowestSPO2 : sp.lowest)); }
       if (typeof sc.feedback === "string") d.sleepFeedback = sc.feedback;
       var prev = byDate[date];
       if (!prev || (d.sleepSec || 0) > (prev.sleepSec || 0)) byDate[date] = d; // several sessions per date (naps): keep the longest as the night
     });
-    return { days: Object.keys(byDate).map(function (k) { return byDate[k]; }), activities: [], warnings: [] };
+    return { days: Object.keys(byDate).map(function (k) { return byDate[k]; }), activities: [], warnings: warnings1 };
   }
 
   /* ---------- healthStatusData (HRV etc.) ---------- */
@@ -170,6 +176,8 @@
 
   /* ---------- summarizedActivities ---------- */
   function msOf(v) { v = num(v); return v === null ? null : (v < 1e11 ? v * 1000 : v); }
+  // activityType is a string in most exports, but an object ({typeId, typeKey, parentTypeId}) in some
+  function typeKeyOf(t) { if (t && typeof t === "object") t = t.typeKey || t.key || t.name; return typeof t === "string" && t ? t.toLowerCase() : ""; }
   function parseSummarized(data) {
     var acts = [], warnings = [];
     var items = [];
@@ -177,7 +185,7 @@
     items.forEach(function (a) {
       var st = msOf(a.startTimeGmt != null ? a.startTimeGmt : a.beginTimestamp); if (st === null) return;
       var stl = msOf(a.startTimeLocal);
-      var out = { id: "g" + (a.activityId != null ? a.activityId : st), source: "summary", name: typeof a.name === "string" ? a.name : "", type: String(a.activityType || "other").toLowerCase(), start: st };
+      var out = { id: "g" + (a.activityId != null ? a.activityId : st), source: "summary", name: typeof a.name === "string" ? a.name : "", type: typeKeyOf(a.activityType) || typeKeyOf(a.sportType) || "other", start: st };
       if (stl !== null) out.tzOffsetMin = Math.round((stl - st) / 60000);
       out.date = D.keyShifted(st, out.tzOffsetMin || 0);
       var dur = pos(a.duration != null ? a.duration : a.elapsedDuration); if (dur) out.durationSec = Math.round(dur / 10) / 100; // ms -> s
@@ -431,6 +439,20 @@
     if (/\.zip$/i.test(lb)) return "zip";
     return "other";
   }
+  /* ---------- unit / plausibility sanity checks ---------- */
+  var DAY_RANGE = { steps: [0, 100000], stepGoal: [100, 100000], distanceM: [0, 300000], kcalTotal: [500, 15000], kcalActive: [0, 12000], modMin: [0, 1440], vigMin: [0, 1440], minHr: [20, 200], maxHr: [60, 250], rhr: [25, 130], hsRhr: [25, 130],
+    stressAvg: [0, 100], stressMax: [0, 100], sleepStress: [0, 100], awakeStress: [0, 100], bbHigh: [0, 100], bbLow: [0, 100], bbEnd: [0, 100], spo2Avg: [50, 100], spo2Low: [50, 100], sleepSpo2: [50, 100], sleepSpo2Low: [50, 100], hsSpo2: [50, 100],
+    respAvg: [3, 60], respLow: [3, 60], respHigh: [3, 60], sleepResp: [3, 60], sleepRespLow: [3, 60], sleepRespHigh: [3, 60], hsResp: [3, 60], hrv: [5, 300], hrvSleep: [5, 300], hrvWeeklyAvg: [5, 300], hrvLow: [5, 300], hrvHigh: [5, 300],
+    sleepSec: [0, 86400], deepSec: [0, 86400], lightSec: [0, 86400], remSec: [0, 86400], awakeSec: [0, 86400], sleepScore: [0, 100], readiness: [0, 100], weightKg: [20, 400], lthr: [80, 220], vo2max: [10, 95], skinTemp: [-15, 45] };
+  var ACT_RANGE = { durationSec: [1, 7 * 86400], movingSec: [1, 7 * 86400], distanceM: [0, 1.5e6], avgHr: [30, 230], maxHr: [40, 250], minHr: [20, 230], calories: [0, 30000], vo2max: [10, 95] };
+  function sanitize(r) { // drops values that cannot be right (wrong unit, corrupt field) instead of letting them skew every chart
+    var bad = {}, n = 0;
+    function clean(o, R) { Object.keys(R).forEach(function (k) { var v = o[k]; if (typeof v === "number" && (v < R[k][0] || v > R[k][1])) { delete o[k]; bad[k] = (bad[k] || 0) + 1; n++; } }); }
+    (r.days || []).forEach(function (d) { clean(d, DAY_RANGE); });
+    (r.activities || []).forEach(function (a) { clean(a, ACT_RANGE); });
+    if (n) { r.warnings = (r.warnings || []).concat(["Ignored " + n + " value(s) outside a plausible range (" + Object.keys(bad).slice(0, 6).join(", ") + "). The file may use different units than expected."]); r.sanityDropped = n; }
+    return r;
+  }
   var JSON_PARSERS = { uds: parseUds, sleep: parseSleep, healthStatus: parseHealthStatus, activities: parseSummarized, readiness: parseReadiness, load: parseLoad, vo2max: parseVo2, maxmet: parseMaxMet, bio: parseBio, bundle: parseBundle };
   // file = {name, text?, bytes?}; kindHint from classify()
   function parseFile(file, opts) {
@@ -448,9 +470,15 @@
       var data = tryJson(text);
       if (kind === "json" || !JSON_PARSERS[kind]) { kind = sniffJson(data); if (!kind) return { kind: "json-unknown", days: [], activities: [], warnings: ["JSON file not recognised as a Garmin export file"] }; }
       else if (kind !== "bundle" && sniffJson(data) === "bundle") kind = "bundle";
-      var r = JSON_PARSERS[kind](data); r.kind = kind; return r;
+      var r = JSON_PARSERS[kind](data); r.kind = kind; return kind === "bundle" ? r : sanitize(r);
     }
     return { kind: "other", days: [], activities: [], warnings: [] };
   }
-  return { parseFile: parseFile, classify: classify, sniffJson: sniffJson, parseUds: parseUds, parseSleep: parseSleep, parseHealthStatus: parseHealthStatus, parseReadiness: parseReadiness, parseLoad: parseLoad, parseSummarized: parseSummarized, parseFit: parseFit, parseTcx: parseTcx, parseGpx: parseGpx, parseCsv: parseCsv, parseActivitiesCsv: parseActivitiesCsv, parseDaysCsv: parseDaysCsv, parseBundle: parseBundle, parseBio: parseBio, parseVo2: parseVo2, parseMaxMet: parseMaxMet, bestEfforts: bestEfforts, buildSeries: buildSeries, sportGroup: sportGroup, STEP_S: STEP_S };
+  // Folders of the export that hold account / personal-service data, not health data. Their JSON is never read.
+  var SKIP_TOKENS = { account: 1, accounts: 1, customer: 1, user: 1, users: 1, social: 1, payment: 1, payments: 1, content: 1, device: 1, devices: 1, golf: 1 };
+  function isSkippedFolder(name) {
+    var segs = String(name).replace(/\\/g, "/").split("/"); segs.pop(); // folders only, not the file name
+    return segs.some(function (sg) { return sg.toLowerCase().split(/[^a-z]+/).some(function (t) { return SKIP_TOKENS[t]; }); });
+  }
+  return { parseFile: parseFile, isSkippedFolder: isSkippedFolder, sanitize: sanitize, typeKeyOf: typeKeyOf, classify: classify, sniffJson: sniffJson, parseUds: parseUds, parseSleep: parseSleep, parseHealthStatus: parseHealthStatus, parseReadiness: parseReadiness, parseLoad: parseLoad, parseSummarized: parseSummarized, parseFit: parseFit, parseTcx: parseTcx, parseGpx: parseGpx, parseCsv: parseCsv, parseActivitiesCsv: parseActivitiesCsv, parseDaysCsv: parseDaysCsv, parseBundle: parseBundle, parseBio: parseBio, parseVo2: parseVo2, parseMaxMet: parseMaxMet, bestEfforts: bestEfforts, buildSeries: buildSeries, sportGroup: sportGroup, STEP_S: STEP_S };
 });

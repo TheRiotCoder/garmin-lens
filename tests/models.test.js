@@ -192,4 +192,28 @@ ok("prepare() keeps day and activity counts", ds.acts.length === dd.activities.l
   const mk2 = mk(40 + 45, (k) => k < 40 ? { rhr: 55 + noise(k), hrv: 60 * Math.exp(noise(k) * 0.02), sleepResp: 14 } : k < 40 + 40 ? { rhr: 63 + noise(k) * 0.5, hrv: 40 * Math.exp(noise(k) * 0.02), sleepResp: 16.5 } : { rhr: 71 + noise(k) * 0.5, hrv: 28 * Math.exp(noise(k) * 0.02), sleepResp: 19 });
   const ds2 = M.prepare(mk2, [], [], S0); ok("a further jump on top of the settled new level flags again", !!M.dayAnomaly(ds2, 82).level && !M.dayAnomaly(ds2, 78).level, [M.dayAnomaly(ds2, 78).level, M.dayAnomaly(ds2, 82).level]);
 }
+
+// ---- v1.2: HRV sources (nightly / sleepData fallback / weekly-only / none) and event labels
+{
+  const noise = k => ((k * 7919) % 11 - 5) / 10;
+  const mkH = (n, f) => mk(n, (k) => Object.assign({ rhr: 55 + noise(k), sleepSec: 7.5 * 3600 }, f(k)));
+  const dN = M.prepare(mkH(40, k => ({ hrv: 60 * Math.exp(noise(k) * 0.02) })), [], [], S0), dS = M.prepare(mkH(40, k => ({ hrvSleep: 60 * Math.exp(noise(k) * 0.02) })), [], [], S0);
+  eq("nightly HRV: mode 'nightly'", dN.hrvMode, "nightly");
+  eq("avgOvernightHrv from sleepData is used when healthStatusData has none", [dS.hrvMode, dS.s.hrv.filter(v => v !== null).length], ["nightly", 40]);
+  const both = M.prepare(mkH(12, () => ({ hrv: 50, hrvSleep: 70 })), [], [], S0); eq("healthStatusData wins over sleepData when both exist", both.s.hrv[5], 50);
+  const dW = M.prepare(mkH(40, k => ({ hrvWeeklyAvg: 55 + Math.floor(k / 7) })), [], [], S0);
+  eq("weekly-only: mode 'weekly', series is the weekly average, log taken of it", [dW.hrvMode, dW.s.hrv[10], Math.abs(dW.s.lnHrv[10] - Math.log(56)) < 1e-12], ["weekly", 56, true]);
+  ok("weekly mode feeds NO nightly series (lnHrvNight is all null)", dW.s.lnHrvNight.every(v => v === null));
+  eq("no HRV at all: mode 'none'", M.prepare(mkH(40, () => ({})), [], [], S0).hrvMode, "none");
+  eq("fewer than 10 nightly values but 10+ weekly: weekly wins", M.prepare(mkH(40, k => Object.assign({ hrvWeeklyAvg: 55 }, k < 4 ? { hrv: 60 } : {})), [], [], S0).hrvMode, "weekly");
+  const rW = M.recovery(dW, 35), hW = rW.components.find(c => c.key === "hrv"), rN = M.recovery(dN, 35), hN = rN.components.find(c => c.key === "hrv");
+  ok("weekly HRV component is labelled lower resolution and marked lowRes", /lower resolution, half weight/.test(hW.label) && hW.detail.lowRes === true);
+  eq("weekly HRV carries half the raw weight (0.20 vs 0.40) before re-normalisation", [hW.w, hN.w], [0.2, 0.4]);
+  const ill = mkH(60, k => k >= 45 ? { rhr: 64, hrvWeeklyAvg: 35, sleepResp: 17 } : { hrvWeeklyAvg: 60, sleepResp: 14 });
+  eq("weekly-only HRV: HRV-based strain flag is off (RHR + weekly HRV drop does not flag)", M.dayAnomaly(M.prepare(ill, [], [], S0), 52).level, null);
+  const ill2 = mkH(60, k => k >= 45 ? { rhr: 64, hrv: 35, sleepResp: 17 } : { hrv: 60 * Math.exp(noise(k) * 0.02), sleepResp: 14 });
+  eq("the same pattern with NIGHTLY HRV flags", !!M.dayAnomaly(M.prepare(ill2, [], [], S0), 52).level, true);
+  eq("event types have human labels", [M.eventLabel("caffeine"), M.eventLabel("cycle"), M.eventLabel("hard"), M.eventLabel("weird")], ["Late caffeine", "Menstrual cycle phase", "Hard session / race", "weird"]);
+}
+
 done();

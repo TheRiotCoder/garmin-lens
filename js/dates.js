@@ -21,13 +21,19 @@
 
   // Garmin writes dates in several shapes. Returns {ms, hasTime} where ms is the wall-clock time read as if it were UTC ("naive").
   //   number            -> epoch milliseconds (kept as is)
-  //   {date: "..."}     -> unwrap
+  //   {date: "..."}     -> unwrap;  {year, month, day} (month 1-12) -> that date
   //   "2019-08-05"      -> midnight
   //   "2019-08-04T20:28:00.0" / "...Z" / "...+01:00" -> ISO (zone applied if present, otherwise naive)
   //   "Mar 15, 2022 12:00:00 AM" -> Java/Gson default format, naive
   function parse(v) {
     if (v == null) return null;
-    if (typeof v === "object") { if (v.date != null) return parse(v.date); return null; }
+    if (typeof v === "object") {
+      if (v.date != null) return parse(v.date);
+      if (v.calendarDate != null && v.calendarDate !== v) return parse(v.calendarDate);
+      var y = +v.year, mo = +(v.month != null ? v.month : v.monthValue), dd = +(v.day != null ? v.day : v.dayOfMonth); // {year, month(1-12), day} (Java LocalDate style)
+      if (y >= 1970 && y <= 2100 && mo >= 1 && mo <= 12 && dd >= 1 && dd <= 31) return { ms: Date.UTC(y, mo - 1, dd), hasTime: false };
+      return null;
+    }
     if (typeof v === "number") return isFinite(v) ? { ms: v, hasTime: true } : null;
     if (typeof v !== "string") return null;
     var s = v.trim(), m;

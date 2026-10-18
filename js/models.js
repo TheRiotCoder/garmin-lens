@@ -21,7 +21,7 @@
   }
   var SERIES = {
     rhr: function (d) { return ok(d.rhr) ? d.rhr : ok(d.hsRhr) ? d.hsRhr : null; },
-    hrv: function (d) { return ok(d.hrv) ? d.hrv : null; },
+    hrv: function (d) { return ok(d.hrv) ? d.hrv : ok(d.hrvSleep) ? d.hrvSleep : null; }, // nightly value: healthStatusData first, else avgOvernightHrv from sleepData
     sleepH: function (d) { return ok(d.sleepSec) ? d.sleepSec / 3600 : null; },
     sleepScore: function (d) { return ok(d.sleepScore) ? d.sleepScore : null; },
     deepPct: function (d) { var t = (d.deepSec || 0) + (d.lightSec || 0) + (d.remSec || 0); return ok(d.deepSec) && t > 0 ? 100 * d.deepSec / t : null; },
@@ -40,6 +40,8 @@
     vo2max: function (d) { return ok(d.vo2max) ? d.vo2max : null; },
     activeMin: function (d) { return ok(d.modMin) || ok(d.vigMin) ? (d.modMin || 0) + (d.vigMin || 0) : null; }
   };
+  var EVENT_LABELS = { alcohol: "Alcohol", caffeine: "Late caffeine", hard: "Hard session / race", illness: "Feeling ill", travel: "Travel / time-zone change", stress: "Stressful day", cycle: "Menstrual cycle phase", note: "Other note", sleep: "Sleep note" };
+  function eventLabel(t) { return EVENT_LABELS[t] || String(t); }
   var LABELS = { rhr: "Resting HR (bpm)", hrv: "Overnight HRV (ms)", lnHrv: "Overnight HRV (log scale)", sleepH: "Sleep duration (h)", sleepScore: "Sleep score", deepPct: "Deep sleep (%)", remPct: "REM sleep (%)", awakeMin: "Awake in bed (min)", stress: "Stress (avg)", sleepStress: "Sleep stress", bbHigh: "Body Battery high", bbLow: "Body Battery low", resp: "Respiration (brpm)", spo2: "SpO2 (%)", skin: "Skin temp (°C dev.)", steps: "Steps", weight: "Weight (kg)", readiness: "Garmin readiness", vo2max: "VO2max", activeMin: "Intensity min", load: "Training load (hrTSS)", onset: "Bedtime (min after 18:00)", wake: "Wake (min after 18:00)", mid: "Mid-sleep (min after 18:00)", recovery: "Recovery score", ctl: "Fitness (CTL)", atl: "Fatigue (ATL)", tsb: "Form (TSB)" };
 
   /* ---------- heart-rate based load ---------- */
@@ -97,7 +99,13 @@
     var dates = first ? D.range(first, last) : [], idx = {}; dates.forEach(function (d, i) { idx[d] = i; });
     var n = dates.length, series = {};
     Object.keys(SERIES).forEach(function (k) { series[k] = dates.map(function (d) { return byDate[d] ? SERIES[k](byDate[d]) : null; }); });
+    // HRV source: nightly values (healthStatusData or sleepData) when there are enough; otherwise Garmin's WEEKLY average from TrainingReadiness (one number per week,
+    // repeated daily = lower resolution); otherwise none. The log is taken of whatever is used; weekly mode never feeds the strain flags.
+    var nHrvNight = series.hrv.filter(ok).length, weeklyArr = dates.map(function (d) { return byDate[d] && ok(byDate[d].hrvWeeklyAvg) ? byDate[d].hrvWeeklyAvg : null; }), nHrvWeekly = weeklyArr.filter(ok).length;
+    var hrvMode = nHrvNight >= 10 ? "nightly" : nHrvWeekly >= 10 ? "weekly" : nHrvNight > 0 ? "nightly" : "none";
+    if (hrvMode === "weekly") series.hrv = weeklyArr;
     series.lnHrv = series.hrv.map(function (v) { return ok(v) && v > 0 ? Math.log(v) : null; });
+    series.lnHrvNight = hrvMode === "nightly" ? series.lnHrv.slice() : series.lnHrv.map(function () { return null; });
     ["onset", "wake", "mid"].forEach(function (k) { series[k] = dates.map(function (d) { var c = sleepClock(byDate[d], s.tzMin); return c ? c[k] : null; }); });
     var enriched = (acts || []).map(function (a) { return enrichActivity(a, loadSeriesFor ? loadSeriesFor(a) : a.series, s); });
     series.load = dates.map(function () { return 0; }); series.actMin = dates.map(function () { return 0; });
@@ -109,7 +117,7 @@
       if (ok(a.durationSec)) series.actMin[i] += a.durationSec / 60;
     });
     series.load = series.load.map(function (x) { return Math.round(x * 10) / 10; });
-    var ds = { settings: s, dates: dates, idx: idx, n: n, s: series, days: byDate, acts: enriched, actsByDate: actsByDate, notes: notes || [], notesByDate: {}, demo: days.some(function (d) { return d.demo; }) };
+    var ds = { hrvMode: hrvMode, settings: s, dates: dates, idx: idx, n: n, s: series, days: byDate, acts: enriched, actsByDate: actsByDate, notes: notes || [], notesByDate: {}, demo: days.some(function (d) { return d.demo; }) };
     (notes || []).forEach(function (nt) { (ds.notesByDate[nt.date] = ds.notesByDate[nt.date] || []).push(nt); });
     ds.cycleDays = {}; // days covered by a "cycle" event (optionally a range via nt.until, max 45 days) – a confounder, not an exposure
     (notes || []).forEach(function (nt) { if (nt.type !== "cycle") return; var d0 = nt.date, last = nt.until && nt.until >= nt.date ? nt.until : nt.date; for (var q = 0; q < 45 && d0 <= last; q++) { ds.cycleDays[d0] = true; d0 = D.addDays(d0, 1); } });
@@ -142,7 +150,7 @@
   function monotony(load, i) { if (i < 6) return null; var w = load.slice(i - 6, i + 1), m = S.mean(w), sd = S.sd(w); if (!sd) return { monotony: null, strain: null, weekly: S.sum(w) }; return { monotony: m / sd, strain: S.sum(w) * (m / sd), weekly: S.sum(w) }; }
 
   /* ---------- baselines / z-scores ---------- */
-  var SD_FLOOR = { rhr: 1.0, lnHrv: 0.05, resp: 0.3, skin: 0.15, sleepH: 0.35, stress: 3, sleepScore: 4, bbHigh: 4, deepPct: 2, steps: 1200, spo2: 0.6, readiness: 6 };
+  var SD_FLOOR = { rhr: 1.0, lnHrv: 0.05, lnHrvNight: 0.05, resp: 0.3, skin: 0.15, sleepH: 0.35, stress: 3, sleepScore: 4, bbHigh: 4, deepPct: 2, steps: 1200, spo2: 0.6, readiness: 6 };
   function zScore(ds, key, i, win, robust, skip) {
     var arr = ds.s[key]; if (!arr || !ok(arr[i])) return null;
     win = win || ds.settings.baselineDays;
@@ -169,9 +177,10 @@
     z = zScore(ds, "lnHrv", i);
     if (z) { // readiness uses the 7-night average of ln(HRV) against the 28-day baseline; single-night z is for flags only
       var l7 = []; for (var k7 = Math.max(0, i - 6); k7 <= i; k7++) if (ok(ds.s.lnHrv[k7])) l7.push(ds.s.lnHrv[k7]);
-      var zz = z.z, lab = "Overnight HRV, single night vs your 28-day normal (fewer than 4 recent nights)", det = z;
-      if (l7.length >= 4) { var a7 = S.mean(l7); zz = (a7 - z.mean) / z.sd; lab = "Overnight HRV, 7-night average vs your 28-day normal"; det = { z: zz, value: a7, mean: z.mean, sd: z.sd, n: z.n, nights: l7.length, ratio: Math.exp(a7 - z.mean), singleNightZ: z.z }; }
-      comps.push({ key: "hrv", label: lab, z: S.clamp(zz, -3, 3), w: RECOVERY_WEIGHTS.hrv, detail: det });
+      var zz = z.z, lab = "Overnight HRV, single night vs your 28-day normal (fewer than 4 recent nights)", det = z, wH = RECOVERY_WEIGHTS.hrv;
+      if (ds.hrvMode === "weekly") { lab = "HRV, Garmin's weekly average vs your 28-day normal (lower resolution, half weight)"; det = Object.assign({ lowRes: true }, z); wH = RECOVERY_WEIGHTS.hrv / 2; }
+      else if (l7.length >= 4) { var a7 = S.mean(l7); zz = (a7 - z.mean) / z.sd; lab = "Overnight HRV, 7-night average vs your 28-day normal"; det = { z: zz, value: a7, mean: z.mean, sd: z.sd, n: z.n, nights: l7.length, ratio: Math.exp(a7 - z.mean), singleNightZ: z.z }; }
+      comps.push({ key: "hrv", label: lab, z: S.clamp(zz, -3, 3), w: wH, detail: det });
     }
     z = zScore(ds, "rhr", i); if (z) comps.push({ key: "rhr", label: "Resting HR vs your 28-day normal (lower is better)", z: S.clamp(-z.z, -3, 3), w: RECOVERY_WEIGHTS.rhr, detail: z });
     if (ok(ds.s.sleepH[i])) comps.push({ key: "sleep", label: "Sleep vs your need (" + s.sleepNeedH + " h; extra sleep counts at most +" + SLEEP_BONUS_CAP + ")", z: S.clamp((ds.s.sleepH[i] - s.sleepNeedH) / 1.0, -3, SLEEP_BONUS_CAP), w: RECOVERY_WEIGHTS.sleep, detail: { value: ds.s.sleepH[i], need: s.sleepNeedH } });
@@ -211,7 +220,7 @@
   /* ---------- anomaly / illness-like signature ---------- */
   var SIGNALS = [
     { key: "rhr", dir: 1, z: 1.5, min: 3, label: "resting HR up", unit: "bpm" },
-    { key: "lnHrv", dir: -1, z: 1.5, min: Math.log(1 / 0.85) * -1, label: "HRV down", unit: "" },
+    { key: "lnHrv", series: "lnHrvNight", dir: -1, z: 1.5, min: Math.log(1 / 0.85) * -1, label: "HRV down", unit: "" },
     { key: "resp", dir: 1, z: 1.5, min: 0.8, label: "breathing rate up", unit: "brpm" },
     { key: "skin", dir: 1, z: 1.5, min: 0.5, label: "skin temperature up", unit: "°C" }
   ];
@@ -220,7 +229,7 @@
   function scoreAnomaly(ds, i, skip) {
     var sig = [], z = null;
     SIGNALS.forEach(function (sg) {
-      z = zScore(ds, sg.key, i, null, true, skip); if (!z) return;
+      z = zScore(ds, sg.series || sg.key, i, null, true, skip); if (!z) return;
       var delta = z.value - z.mean, passes = sg.dir * z.z >= sg.z && (sg.key === "lnHrv" ? delta <= Math.log(0.85) : sg.dir * delta >= sg.min);
       sig.push({ key: sg.key, label: sg.label, z: z.z, delta: sg.key === "lnHrv" ? (Math.exp(delta) - 1) * 100 : delta, pass: passes });
     });
@@ -308,5 +317,5 @@
 
   return { DEFAULTS: DEFAULTS, SERIES: SERIES, LABELS: LABELS, ZONE_NAMES: ZONE_NAMES, resolveSettings: resolveSettings, sleepClock: sleepClock, trimpSample: trimpSample, trimpFromSeries: trimpFromSeries, trimpHour: trimpHour, zoneEdges: zoneEdges, zonesFromSeries: zonesFromSeries, enrichActivity: enrichActivity,
     prepare: prepare, performanceChart: performanceChart, acwr: acwr, acwrZone: acwrZone, monotony: monotony, zScore: zScore, normalRange: normalRange, rollingBaseline: rollingBaseline, rollingBand: rollingBand, recovery: recovery, RECOVERY_WEIGHTS: RECOVERY_WEIGHTS, RECOVERY_K: RECOVERY_K,
-    sleepRegularity: sleepRegularity, socialJetLag: socialJetLag, sleepDebt: sleepDebt, dayAnomaly: dayAnomaly, anomalyStatus: anomalyStatus, ANOMALY_CARE: ANOMALY_CARE, LUTEAL_NOTE: LUTEAL_NOTE, SUSTAINED_NOTE: SUSTAINED_NOTE, SUSTAINED_DAYS: SUSTAINED_DAYS, SLEEP_BONUS_CAP: SLEEP_BONUS_CAP, bCoef: bCoef, ACWR_HIGH: ACWR_HIGH, ACWR_LOW: ACWR_LOW, estimateMaxHr: estimateMaxHr, anomalyEpisodes: anomalyEpisodes, decoupling: decoupling, hrDriftSlope: hrDriftSlope, paceStr: paceStr, personalRecords: personalRecords, weeklyZoneDistribution: weeklyZoneDistribution };
+    sleepRegularity: sleepRegularity, socialJetLag: socialJetLag, sleepDebt: sleepDebt, dayAnomaly: dayAnomaly, anomalyStatus: anomalyStatus, ANOMALY_CARE: ANOMALY_CARE, LUTEAL_NOTE: LUTEAL_NOTE, EVENT_LABELS: EVENT_LABELS, eventLabel: eventLabel, SUSTAINED_NOTE: SUSTAINED_NOTE, SUSTAINED_DAYS: SUSTAINED_DAYS, SLEEP_BONUS_CAP: SLEEP_BONUS_CAP, bCoef: bCoef, ACWR_HIGH: ACWR_HIGH, ACWR_LOW: ACWR_LOW, estimateMaxHr: estimateMaxHr, anomalyEpisodes: anomalyEpisodes, decoupling: decoupling, hrDriftSlope: hrDriftSlope, paceStr: paceStr, personalRecords: personalRecords, weeklyZoneDistribution: weeklyZoneDistribution };
 });

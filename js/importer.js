@@ -8,10 +8,16 @@
   var MAX_DEPTH = 3;
 
   // field-wise merge of day records: a newer non-empty value replaces an older one
+  // Cumulative counters: when two records exist for one date (Garmin writes several UDSFile records per day) the larger one is the later/complete count.
+  var CUMULATIVE = { steps: 1, distanceM: 1, kcalTotal: 1, kcalActive: 1, modMin: 1, vigMin: 1, floors: 1, bbCharged: 1, bbDrained: 1, stressHighSec: 1, stressMedSec: 1, stressLowSec: 1, stressRestSec: 1 };
   function mergeDay(a, b) {
     var o = {}, k;
     for (k in a) o[k] = a[k];
     for (k in b) if (b[k] !== undefined && b[k] !== null) {
+      if (typeof b[k] === "number" && typeof a[k] === "number") { // a later 0 never wipes an earlier real value; cumulative fields keep the maximum
+        if (CUMULATIVE[k]) { o[k] = Math.max(a[k], b[k]); continue; }
+        if (b[k] === 0 && a[k] > 0) continue;
+      }
       if (k === "sleepUnconfirmed") { if (a.sleepSec === undefined) o[k] = b[k]; continue; }
       o[k] = b[k];
     }
@@ -31,12 +37,12 @@
   function Importer(opts) {
     this.opts = opts || {};
     this.days = {}; this.acts = {}; this.annotations = []; this.goals = null;
-    this.stats = { files: 0, kinds: {}, ignored: 0, fitOther: 0, fitActivities: 0, warnings: [], errors: [], demo: false };
-    this.warned = {};
+    this.stats = { files: 0, kinds: {}, ignored: 0, skippedPrivate: 0, fitOther: 0, fitActivities: 0, warnings: [], errors: [], demo: false };
+    this.warned = {}; this.visited = 0; this.expected = 0; // entries seen / entries known so far (a ZIP adds its entry count when opened): drives an honest progress bar
   }
   Importer.prototype.warn = function (w) { if (!this.warned[w]) { this.warned[w] = 1; if (this.stats.warnings.length < 50) this.stats.warnings.push(w); } };
   Importer.prototype.err = function (name, e) { if (this.stats.errors.length < 50) this.stats.errors.push(name + ": " + (e && e.message || e)); };
-  Importer.prototype.progress = function (msg) { if (this.opts.onProgress) this.opts.onProgress({ files: this.stats.files, current: msg }); };
+  Importer.prototype.progress = function (msg) { if (this.opts.onProgress) this.opts.onProgress({ files: this.stats.files, current: msg, done: this.visited, total: this.expected }); };
   Importer.prototype.absorb = function (r, name) {
     var self = this;
     self.stats.files++; self.stats.kinds[r.kind] = (self.stats.kinds[r.kind] || 0) + 1;
@@ -62,10 +68,13 @@
       var src = f.blob ? Promise.resolve(Z.fromBlob(f.blob)) : getBytes().then(function (b) { return Z.fromBytes(b); });
       return src.then(Z.open).then(function (zip) {
         var list = zip.entries.filter(function (e) { return !e.isDir && !/(^|\/)__MACOSX\//.test(e.name) && !/(^|\/)\._/.test(e.name); }), i = 0;
+        self.expected += list.length;
         function next() {
           if (i >= list.length) return Promise.resolve();
-          var e = list[i++], k = P.classify(e.name);
+          var e = list[i++], k = P.classify(e.name); self.visited++; if (self.visited % 25 === 0) self.progress(e.name);
           if (k === "other") { self.stats.ignored++; return next(); }
+          // account / customer-service / user / social / payment / content / device / golf folders: personal-service data, never parsed (userBiometrics.json is the one health file we still need)
+          if (k !== "zip" && k !== "fit" && k !== "tcx" && k !== "gpx" && k !== "csv" && P.isSkippedFolder(e.name) && !/userbiometrics\.json$/i.test(e.name)) { self.stats.skippedPrivate++; return next(); }
           self.progress(e.name);
           return zip.read(e).then(function (bytes) {
             if (k === "zip") return self.addFile({ name: e.name, bytes: bytes }, depth + 1);
@@ -75,6 +84,7 @@
         return next();
       }).catch(function (err) { self.err(f.name, err); });
     }
+    if (f.name && /[\/\\]/.test(f.name) && P.isSkippedFolder(f.name) && /^(json|uds|sleep|healthStatus|activities|readiness|load|vo2max|maxmet|bio|bundle)$/.test(kind) && !/userbiometrics\.json$/i.test(f.name)) { self.stats.skippedPrivate++; return Promise.resolve(); }
     if (kind === "other") { self.stats.ignored++; if (f.name) self.warn("Ignored file type: " + f.name); return Promise.resolve(); }
     return getBytes().then(function (bytes) { return self.addParsed({ name: f.name, bytes: bytes, kind: kind }); }).catch(function (err) { self.err(f.name, err); });
   };
@@ -85,8 +95,8 @@
     return Promise.resolve();
   };
   Importer.prototype.addFiles = function (files) {
-    var self = this, i = 0;
-    function next() { if (i >= files.length) return Promise.resolve(self); return self.addFile(files[i++]).then(next); }
+    var self = this, i = 0; self.expected += files.length;
+    function next() { if (i >= files.length) return Promise.resolve(self); return self.addFile(files[i++]).then(function () { self.visited++; self.progress(""); }).then(next); }
     return next();
   };
   // final merge: link FIT/TCX/GPX activities to the matching summary, drop duplicate CSV rows
@@ -107,6 +117,10 @@
     out.sort(function (a, b) { return a.start - b.start; });
     var days = Object.keys(this.days).sort().map(function (k) { return this.days[k]; }, this);
     // days that only exist because of an activity are not created here (analysis handles activity-only days)
+    var hv = { nightly: 0, sleep: 0, weekly: 0 }; days.forEach(function (d) { if (d.hrv > 0) hv.nightly++; if (d.hrvSleep > 0) hv.sleep++; if (d.hrvWeeklyAvg > 0) hv.weekly++; });
+    this.stats.hrv = hv; this.stats.noHrv = days.length > 0 && !hv.nightly && !hv.sleep && !hv.weekly;
+    if (this.stats.noHrv && !this.stats.demo) this.warn(NO_HRV);
+    else if (!hv.nightly && !hv.sleep && hv.weekly && !this.stats.demo) this.warn("HRV: only the weekly average from TrainingReadiness was found (lower resolution than nightly values). HRV trends and the recovery score use it with reduced weight, and HRV-based strain flags are switched off.");
     return { days: days, activities: out, annotations: this.annotations, goals: this.goals, stats: this.stats };
   };
   // seconds-per-bpm histogram of an activity's heart rate: lets load/zone numbers be recomputed for any max HR without keeping the whole series in memory
@@ -117,6 +131,7 @@
     if (any) { a.hrHist = h; a.hrStep = a.series.step || 5; }
     return a;
   }
+  var NO_HRV = "No HRV found in this export (looked in healthStatusData, avgOvernightHrv in sleepData and hrvWeeklyAverage in TrainingReadiness). HRV charts, the HRV part of the recovery score and HRV-based strain flags will be empty.";
   function create(opts) { return new Importer(opts); }
-  return { create: create, mergeDay: mergeDay, mergeActivity: mergeActivity, addHrHist: addHrHist };
+  return { create: create, mergeDay: mergeDay, mergeActivity: mergeActivity, NO_HRV: NO_HRV, addHrHist: addHrHist };
 });

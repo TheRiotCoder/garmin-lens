@@ -1,7 +1,7 @@
 /* Garmin Lens – app core: state, storage, import, routing, PWA plumbing. Views live in views.js / data-view.js. All data stays on this device. */
 (function () {
   "use strict";
-  var APP_VERSION = "1.1.1";
+  var APP_VERSION = "1.2.0";
   var h = GLUI.h, $ = GLUI.$, M = GLModels, I = GLInsights, S = GLStats, D = GLDates, toast = GLUI.toast;
   var state = { db: null, days: [], acts: [], notes: [], goals: [], settings: {}, ds: null, range: 90, showNotes: true, charts: [], autoMaxHr: null, hasDemo: false };
   var views = {}, App = { state: state, views: views, APP_VERSION: APP_VERSION };
@@ -39,13 +39,13 @@
     });
   }
   function importOnMainThread(files, onProgress) {
-    var imp = GLImporter.create({ distanceUnit: state.settings.csvDistanceUnit || "auto", onProgress: function (p) { onProgress && onProgress({ files: p.files, current: p.current }); } });
+    var imp = GLImporter.create({ distanceUnit: state.settings.csvDistanceUnit || "auto", onProgress: function (p) { onProgress && onProgress({ files: p.files, current: p.current, done: p.done, total: p.total }); } });
     return imp.addFiles(files).then(function () { return imp.result(); });
   }
   function runImport(fileList, onProgress) {
     var files = Array.prototype.map.call(fileList, function (f) { return { name: f.name, size: f.size, blob: f }; });
     return importWithWorker(files, onProgress).catch(function (err) { console.info("worker unavailable, importing on the main thread:", err.message); return importOnMainThread(files, onProgress); }).then(function (r) {
-      var real = !r.stats.demo;
+      var real = !r.stats.demo; onProgress && onProgress({ phase: "saving" });
       return state.db.putDays(r.days).then(function () { return state.db.putActivities(r.activities); }).then(function () { return real && state.hasDemo ? state.db.clearDemo().then(function () { r.stats.demoCleared = true; }) : null; })
         .then(function () { return loadAll(); }).then(function () { return r; });
     });
@@ -96,8 +96,18 @@
   var deferredInstall = null;
   function installInit() {
     function isStandalone() { return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true; }
+    function showBanner() { $("#install-banner").hidden = false; document.body.classList.add("has-banner"); document.body.style.setProperty("--banner-h", $("#install-banner").offsetHeight + "px"); }
     function hide() { $("#install-banner").hidden = true; document.body.classList.remove("has-banner"); }
-    window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferredInstall = e; var dis = 0; try { dis = +localStorage.getItem("garmin-lens-install-dismissed") || 0; } catch (x) {} if (isStandalone() || Date.now() - dis < 14 * 864e5) return; setTimeout(function () { $("#install-banner").hidden = false; document.body.classList.add("has-banner"); }, 1500); });
+    window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferredInstall = e; var dis = 0; try { dis = +localStorage.getItem("garmin-lens-install-dismissed") || 0; } catch (x) {} if (isStandalone() || Date.now() - dis < 14 * 864e5) return; setTimeout(showBanner, 1500); });
+    // iOS / iPadOS Safari has no install prompt: explain Add to Home Screen, and why a backup matters (Safari can evict site storage after ~7 days unused)
+    var ua = navigator.userAgent || "", isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    if (isIOS && !isStandalone()) {
+      var dis2 = 0; try { dis2 = +localStorage.getItem("garmin-lens-install-dismissed") || 0; } catch (x) {}
+      if (Date.now() - dis2 >= 14 * 864e5) setTimeout(function () {
+        $("#install-title").textContent = "Add to Home Screen"; $("#install-text").textContent = "Tap Share, then “Add to Home Screen”. Safari can clear this site’s data after ~7 days unused – keep an encrypted backup.";
+        $("#install-btn").hidden = true; $("#install-backup").hidden = false; showBanner();
+      }, 1500);
+    }
     window.addEventListener("appinstalled", function () { deferredInstall = null; hide(); toast("Garmin Lens installed"); });
     $("#install-btn").onclick = function () { if (deferredInstall) { deferredInstall.prompt(); deferredInstall.userChoice.then(function () { deferredInstall = null; hide(); }); } };
     $("#install-dismiss").onclick = function () { try { localStorage.setItem("garmin-lens-install-dismissed", String(Date.now())); } catch (e) {} hide(); };

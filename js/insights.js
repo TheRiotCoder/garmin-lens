@@ -109,7 +109,7 @@
       { id: "short", title: "Short nights (under 6 h 30 m)", set: (function () { var s = {}; ds.dates.forEach(function (d, i) { if (ok(ds.s.sleepH[i]) && ds.s.sleepH[i] < 6.5) s[d] = true; }); return s; })(), when: "same day", lag: 0, metrics: ["stress", "bbHigh", "readiness"] }
     ];
     var types = {}; ds.notes.forEach(function (n) { types[n.type] = types[n.type] || {}; types[n.type][n.date] = true; });
-    Object.keys(types).forEach(function (t) { if (t === "illness" || t === "travel" || t === "cycle") return; sets.push({ id: "note:" + t, title: "Days you tagged “" + t + "”", set: types[t], when: "next day", lag: 1, metrics: ["lnHrv", "rhr", "sleepScore", "deepPct"] }); });
+    Object.keys(types).forEach(function (t) { if (t === "illness" || t === "travel" || t === "cycle") return; sets.push({ id: "note:" + t, title: "Days you tagged “" + M.eventLabel(t) + "”", set: types[t], when: "next day", lag: 1, metrics: ["lnHrv", "rhr", "sleepScore", "deepPct"] }); });
     var all = [];
     sets.forEach(function (h) {
       var n = Object.keys(h.set).length, item = { id: h.id, title: h.title, when: h.when, days: n, effects: [] };

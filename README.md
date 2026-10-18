@@ -31,16 +31,24 @@ Every formula is documented in [docs/METHODS.md](docs/METHODS.md) and covered by
 2. Garmin emails a download link. **Timing is not guaranteed:** write-ups report minutes to a couple of days; Garmin's own page did not state a time. Re-requesting does not help.
 3. Download the ZIP, open Garmin Lens → **Data → Import**, and drop the **whole ZIP** (do not unzip). Hundreds of MB are fine: entries are read lazily and the nested `UploadedFiles_*.zip` archives of FIT files are opened too.
 4. Optional extras: single activities from Garmin Connect web (activity page → ⚙ → Export Original / TCX / GPX / CSV) and the Activities-list CSV can be dropped in too.
+   - **HRV fallbacks:** nightly HRV is read from `healthStatusData`; if that is missing, from `avgOvernightHrv` in `sleepData`; if there are still no nightly values, from Garmin's *weekly* average (`hrvWeeklyAverage` in TrainingReadiness). Weekly-only HRV is labelled lower resolution, counts half in the recovery score and switches the HRV-based strain flags off. If none of the three exist you get an explicit "No HRV found in this export" note.
+   - **Duplicates and odd shapes:** several `UDSFile` records for one date are merged (cumulative counters keep the larger value, a later zero never wipes a real value); `activityType` may be a string or an object (`typeKey`); dates may be strings, `{date}` or `{year,month,day}`; sleep may be wrapped in `dailySleepDTO`. Values outside a plausible range (wrong unit, corrupt field) are dropped with a warning instead of skewing charts.
 5. Re-import any time (e.g. monthly). Records merge by date and activity start time and are never duplicated. Importing real data replaces demo data.
 
 Set your **max HR, resting HR, threshold HR and sleep need** under Data → Settings; otherwise they are estimated (labelled "auto" – max HR comes from the ~99th percentile of your own sustained heart rate and the app asks you to confirm it; load numbers are approximate).
 
 ## Privacy
 
-- Files are parsed in a Web Worker in your browser. **Nothing is uploaded.** The page ships a strict Content-Security-Policy (`connect-src 'self'`) and the code contains no `fetch`/XHR/WebSocket calls (a test enforces it), so it cannot send your data anywhere. No analytics, no cookies, no third-party scripts or fonts, no CDN.
-- Data is kept in your browser's IndexedDB. It is **not encrypted at rest by the app**; rely on device encryption/lock-screen and use the passphrase-encrypted backup (PBKDF2-SHA-256 250 000 rounds + AES-256-GCM, tamper-checked) for copies. Plain JSON/CSV exports are unencrypted.
-- The only localStorage entry is your light/dark choice. Data → "Delete all my data" wipes everything.
-- GitHub Pages cannot set HTTP headers, so on that host the CSP is delivered by a `<meta>` tag (which cannot carry `frame-ancestors`). `public/_headers` holds the full header set for a Cloudflare-style deploy (a test keeps the two policies identical).
+What is and is not guaranteed (honest version):
+
+- **The page cannot send data.** Its Content-Security-Policy allows connections only back to its own address (`connect-src 'self'`), and the app code contains no `fetch`/XHR/WebSocket/beacon calls (a test enforces it). No analytics, no cookies, no third-party scripts or fonts, no CDN.
+- **The import worker is code-audited, not header-enforced.** Files are parsed in a Web Worker. On GitHub Pages the CSP can only be delivered as a `<meta>` tag, and browsers do not apply a page's meta CSP to its workers. So for the worker the guarantee is that its code (and the five scripts it loads) has **no network calls** – a test checks that, including that the worker only `importScripts()` local files. A dedicated **Cloudflare Pages** origin would add a *header-enforced* CSP that covers workers too (`public/_headers` is ready for it); that has not been done because it is not authorised for this app.
+- **Shared storage origin on github.io.** The live app is served from `theriotcoder.github.io`, the same web origin as other apps by the same author (SatPass, HamLog). Browsers keep IndexedDB per *origin*, so code from those apps could in principle read Garmin Lens's stored data. Mitigations: install it as an app (PWA) – on iPhone/iPad an installed web app gets its own storage – and treat the **passphrase-encrypted backup** as the safe copy. A dedicated origin is available on request.
+- **Safari can evict storage.** Safari on iPhone/iPad may clear a website's data after about 7 days without use unless it is added to the Home Screen. The app shows an Add-to-Home-Screen hint on iOS; keep an encrypted backup (Data → Back up & export).
+- Data is kept in your browser's IndexedDB. It is **not encrypted at rest by the app**; rely on device encryption/lock-screen and use the encrypted backup (PBKDF2-SHA-256 250 000 rounds + AES-256-GCM, tamper-checked) for copies. Plain JSON/CSV exports are unencrypted.
+- The importer **never reads JSON from the export's account, customer-service, user, social, payment, content, device or golf folders** (only `userBiometrics.json` is read from such a folder, for threshold HR and weight).
+- The only localStorage entries are your light/dark choice and a "dismissed" timestamp for the install hint. Data → "Delete all my data" wipes everything else.
+- `public/_headers` holds the full header set for a Cloudflare-style deploy (a test keeps its policy identical to the meta tag plus `frame-ancestors`).
 
 ## How can an app get Garmin watch data? (research, 2026-10-17)
 
@@ -73,6 +81,7 @@ Full notes, field-name tables and every source: [docs/RESEARCH.md](docs/RESEARCH
 | `summarizedActivities` shape and units (ms, cm, float epochs) | Verified against real records published in public repos |
 | `UDSFile` daily fields, `sleepData` fields | Verified against public parsers and issue-pasted records; two date shapes handled |
 | `healthStatusData` (overnight HRV etc.) | **Partly verified**: one public parser + one blog; no real record seen |
+| `avgOvernightHrv` in `sleepData`, `hrvWeeklyAverage` in TrainingReadiness, `dailySleepDTO` wrapper, `{year,month,day}` dates, object `activityType` | **Unverified fallbacks** from public API shapes and parser code; covered by synthetic tests only |
 | Training readiness / acute load / `ActivityVo2Max` / bio-metrics | One public source each |
 | `hrTimeInZone_*` units, sleep SpO2 object names, nested respiration object, `MetricsMaxMet` VO2max meaning | **Unverified**, parsed defensively |
 | Activities-list CSV headers/distance unit | **Unverified** (English headers matched loosely; unit selectable) |
@@ -107,6 +116,8 @@ sh tools/build-site.sh                                  # dist/ for a Cloudflare
 ```
 
 Vanilla JS, no build step, no dependencies, no vendored libraries. Pure modules are UMD, so they run in the page, the import worker and Node. Layout: `js/{dates,stats,zip,fit,parsers,importer}.js` (ingest), `js/{models,insights}.js` (analysis), `js/{charts,ui,app,views,data-view}.js` (UI), `js/{db,crypto,demo}.js`, `sw.js`, `docs/`. Service worker: cache-consistent per `VERSION`, user taps "Update" to switch (bump `VERSION` in `sw.js` and `APP_VERSION` in `js/app.js` together; a test checks they match).
+
+Versioning: `sw.js` `VERSION` and `js/app.js` `APP_VERSION` must match and change whenever a precached file changes. `node tools/stamp.js` records a fingerprint of all precached files; `tests/shell.test.js` fails if files changed without a version bump.
 
 Deployment: GitHub Pages serves the repo root directly (`.nojekyll`). A Cloudflare deploy is possible with `tools/build-site.sh` but is not set up.
 

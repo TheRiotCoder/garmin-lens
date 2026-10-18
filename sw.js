@@ -1,5 +1,5 @@
 /* Garmin Lens service worker – offline app shell (pattern from SatPass). VERSION is the single version string; bump it (and APP_VERSION in js/app.js) on every release. */
-const VERSION = "garmin-lens-v1.1.1";
+const VERSION = "garmin-lens-v1.2.0";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "css/style.css",
   "js/dates.js", "js/stats.js", "js/zip.js", "js/fit.js", "js/parsers.js", "js/importer.js", "js/crypto.js", "js/db.js", "js/demo.js", "js/models.js", "js/insights.js", "js/charts.js", "js/ui.js", "js/app.js", "js/views.js", "js/data-view.js", "js/worker.js", 

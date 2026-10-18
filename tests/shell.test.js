@@ -15,8 +15,20 @@ ok("manifest has a maskable icon and relative start_url/scope", man.icons.some(i
 // versions agree
 const swV = sw.match(/const VERSION = "garmin-lens-v([\d.]+)"/)[1], appV = app.match(/APP_VERSION = "([\d.]+)"/)[1];
 eq("sw.js VERSION matches APP_VERSION", swV, appV);
+// cache fingerprint: precached files changed => VERSION must change (and the stamp must be refreshed)
+{
+  const ST = require("../tools/stamp.js"), fpFile = path.join(root, "tools/cache-fingerprint.json"), rec = fs.existsSync(fpFile) ? JSON.parse(fs.readFileSync(fpFile, "utf8")) : null, cur = ST.compute();
+  const v = ST.verdict(rec, cur); ok("cache fingerprint is current: " + (v || "app files, SHELL list and VERSION agree"), v === null, v);
+  eq("verdict: files changed but VERSION same -> tells you to bump", /was not bumped/.test(ST.verdict({ version: cur.version, hash: "x" }, cur)), true);
+  eq("verdict: nothing changed -> no complaint", ST.verdict({ version: cur.version, hash: cur.hash }, cur), null);
+  eq("verdict: VERSION bumped, stamp not refreshed -> asks to stamp", /node tools\/stamp.js/.test(ST.verdict({ version: "garmin-lens-v0", hash: "x" }, cur)), true);
+  eq("fingerprint covers the whole SHELL list", cur.files, shell.length);
+  const shipped = ["index.html", "manifest.webmanifest", "css/style.css"].concat(fs.readdirSync(path.join(root, "js")).filter(f => f.endsWith(".js")).map(f => "js/" + f));
+  ok("every shipped js/css/html file is precached", shipped.every(f => shell.includes(f)), shipped.filter(f => !shell.includes(f)));
+}
+
 eq("CHANGELOG top entry is the current version", fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8").match(/^## ([\d.]+)/m)[1], appV);
-eq("version bumped past 1.1.0 so installed copies update", appV, "1.1.1");
+eq("version bumped past 1.1.1 so installed copies update", appV, "1.2.0");
 ok("sw deletes only its own old caches", /startsWith\("garmin-lens-"\)/.test(sw));
 ok("sw rebuilds redirected responses (plain())", /function plain\(/.test(sw) && /res\.redirected/.test(sw));
 ok("sw never touches cross-origin requests", /url\.origin !== self\.location\.origin\) return/.test(sw));
@@ -32,7 +44,7 @@ for (const f of files) {
   const urls = [...rd(f).matchAll(/https?:\/\/[^\s"'`)<>]+/g)].map(m => m[0]).filter(u => !/^https?:\/\/(www\.)?(w3\.org|github\.com\/TheRiotCoder\/garmin-lens)/.test(u));
   ok("no external URLs in " + f, urls.length === 0, urls);
 }
-ok("no fetch/XMLHttpRequest/WebSocket/sendBeacon/EventSource in app code (data never leaves the device)", files.filter(f => f.startsWith("js/") && !["js/worker.js"].includes(f)).every(f => !/\b(fetch|XMLHttpRequest|WebSocket|sendBeacon|EventSource)\s*\(/.test(rd(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, ""))));
+ok("no fetch/XMLHttpRequest/WebSocket/sendBeacon/EventSource/import() in app code INCLUDING the import worker (the CSP meta tag does not govern workers on GitHub Pages, so this audit is the guarantee)", files.filter(f => f.startsWith("js/")).every(f => !/\b(fetch|XMLHttpRequest|WebSocket|sendBeacon|EventSource|import)\s*\(/.test(rd(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, ""))));
 ok("no CDN / vendor dependencies", !fs.existsSync(path.join(root, "js/vendor")) || fs.readdirSync(path.join(root, "js/vendor")).length === 0);
 // secrets / tokens must never be committed
 const all = []; (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (["node_modules", ".git"].includes(e.name)) continue; const p = path.join(d, e.name); e.isDirectory() ? walk(p) : all.push(p); } })(root);
@@ -44,4 +56,11 @@ ok("README mentions not-medical-advice and the privacy model", !fs.existsSync(pa
 ok("disclaimer shown in UI", /not a medical device/.test(app) && /Not medical advice/i.test(rd("js/data-view.js")));
 ok("viewport meta allows zoom (accessibility)", !/user-scalable=no|maximum-scale=1\b/.test(html));
 ok("html has lang and a title", /<html lang="en">/.test(html) && /<title>[^<]+<\/title>/.test(html));
+{ // the worker only importScripts() local, relative files that are themselves audited above
+  const w = rd("js/worker.js"), m = w.match(/importScripts\(([^)]*)\)/); const args = m[1].split(",").map(x => x.trim().replace(/^"|"$/g, ""));
+  ok("worker importScripts only local relative files that exist and are precached", args.length >= 5 && args.every(a => /^[a-z-]+\.js$/.test(a) && fs.existsSync(path.join(root, "js", a)) && shell.includes("js/" + a)), args);
+  ok("worker never calls importScripts with a URL or variable", (w.match(/importScripts\(/g) || []).length === 1);
+  ok("worker has no network or storage APIs (postMessage only)", !/\b(indexedDB|localStorage|caches|navigator\.sendBeacon|XMLHttpRequest|fetch)\b/.test(w.replace(/\/\*[\s\S]*?\*\//g, "")));
+  ok("README states the CSP-vs-worker limit and the dedicated Cloudflare Pages option", /worker/i.test(rd("README.md")) && /header-enforced/.test(rd("README.md")) && /Cloudflare Pages/.test(rd("README.md")) && /shared.*origin/i.test(rd("README.md")));
+}
 done();

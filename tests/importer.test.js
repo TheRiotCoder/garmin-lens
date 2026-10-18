@@ -57,5 +57,54 @@ PY`);
   // nested depth guard
   ok("Importer exports mergeDay/mergeActivity", typeof Imp.mergeDay === "function" && typeof Imp.mergeActivity === "function");
   const m = Imp.mergeDay({ a: 1, b: 2 }, { b: null, c: 3 }); eq("mergeDay ignores null overwrite", m, { a: 1, b: 2, c: 3 });
-  done();
+  
+
+  // ---------- v1.2: duplicate daily records, private folders, HRV availability, progress
+  {
+    const md = Imp.mergeDay;
+    eq("duplicate UDS records: cumulative counters keep the maximum", md({ steps: 8000, kcalTotal: 2300, distanceM: 6000 }, { steps: 9500, kcalTotal: 2250, distanceM: 6500 }), { steps: 9500, kcalTotal: 2300, distanceM: 6500 });
+    eq("a later ZERO never wipes an earlier real value (steps and non-cumulative)", md({ steps: 8000, stepGoal: 9000, stressAvg: 31 }, { steps: 0, stepGoal: 0, stressAvg: 0 }), { steps: 8000, stepGoal: 9000, stressAvg: 31 });
+    eq("an earlier zero is replaced by a later real value", md({ steps: 0, stressAvg: 0 }, { steps: 40, stressAvg: 12 }), { steps: 40, stressAvg: 12 });
+    eq("non-cumulative later value still replaces (resting HR 55 -> 53)", md({ rhr: 55 }, { rhr: 53 }).rhr, 53);
+    const i2 = Imp.create({}); await i2.addFile({ name: "UDSFile_a.json", text: JSON.stringify([{ calendarDate: "2026-03-10", totalSteps: 9000, restingHeartRate: 52 }, { calendarDate: "2026-03-10", totalSteps: 0, restingHeartRate: 53 }]) });
+    const d2 = i2.result().days; eq("end to end: one day, steps 9000 (later 0 ignored), rhr 53", [d2.length, d2[0].steps, d2[0].rhr], [1, 9000, 53]);
+
+    const uds = JSON.stringify([{ calendarDate: "2026-03-11", totalSteps: 5000, restingHeartRate: 50 }]);
+    const i3 = Imp.create({});
+    for (const n of ["DI_CONNECT/DI-Connect-User/UDSFile_u.json", "DI_CONNECT/DI-Connect-Account/UDSFile_a.json", "x/Golf/UDSFile_g.json", "x/DI-Connect-Device/UDSFile_d.json", "x/DI-Connect-Social/UDSFile_s.json", "x/DI-Connect-Payment/UDSFile_p.json", "x/DI-Connect-Content/UDSFile_c.json", "x/DI-Connect-Customer-Service/UDSFile_cs.json"]) await i3.addFile({ name: n, text: uds });
+    eq("8 JSON files in private folders: none parsed, all counted as skipped", [i3.result().days.length, i3.stats.skippedPrivate, i3.stats.files], [0, 8, 0]);
+    await i3.addFile({ name: "DI_CONNECT/DI-Connect-Aggregator/UDSFile_ok.json", text: uds });
+    eq("same file in a normal folder is parsed", i3.result().days.length, 1);
+    await i3.addFile({ name: "DI_CONNECT/DI-Connect-User/userBiometrics.json", text: JSON.stringify([{ metaData: { calendarDate: "2026-03-11" }, lactateThreshold: { heartRate: 158 }, weight: { weight: 80000 } }]) });
+    eq("userBiometrics.json is still read from a user folder (threshold HR + weight)", [i3.result().days[0].lthr, i3.result().days[0].weightKg], [158, 80]);
+    const zdir = path.join(tmp, "zp"); fs.mkdirSync(path.join(zdir, "DI_CONNECT/DI-Connect-User"), { recursive: true }); fs.mkdirSync(path.join(zdir, "DI_CONNECT/DI-Connect-Aggregator"), { recursive: true });
+    fs.writeFileSync(path.join(zdir, "DI_CONNECT/DI-Connect-User/UDSFile_u.json"), uds); fs.writeFileSync(path.join(zdir, "DI_CONNECT/DI-Connect-Aggregator/UDSFile_ok.json"), JSON.stringify([{ calendarDate: "2026-03-12", totalSteps: 7000, restingHeartRate: 50 }]));
+    cp.execSync(`python3 - <<'PY'
+import zipfile,os
+t=${JSON.stringify(zdir)}
+with zipfile.ZipFile(os.path.join(t,"..","private.zip"),"w",zipfile.ZIP_DEFLATED) as z:
+    for r,_,fs in os.walk(os.path.join(t,"DI_CONNECT")):
+        for f in fs: z.write(os.path.join(r,f),os.path.relpath(os.path.join(r,f),t))
+PY`);
+    const i4 = Imp.create({});
+    await i4.addFile({ name: "private.zip", bytes: new Uint8Array(fs.readFileSync(path.join(tmp, "private.zip"))) });
+    eq("ZIP: JSON inside DI-Connect-User is skipped, the other entry is parsed", [i4.result().days.map(d => d.date), i4.stats.skippedPrivate], [["2026-03-12"], 1]);
+
+    const mkd = (n, f) => Array.from({ length: n }, (_, k) => Object.assign({ date: "2026-03-" + String(k + 1).padStart(2, "0") }, f(k)));
+    const run = async (days) => { const im = Imp.create({}); await im.addFile({ name: "garmin-lens-bundle.json", text: JSON.stringify({ format: "garmin-lens-bundle", version: 1, days, activities: [] }) }); return im; };
+    const rNo = (await run(mkd(5, () => ({ rhr: 52 })))).result();
+    eq("no HRV anywhere: explicit note + flag", [rNo.stats.noHrv, rNo.stats.warnings.some(w => w === Imp.NO_HRV), /No HRV found in this export/.test(Imp.NO_HRV)], [true, true, true]);
+    const nightly = (await run(mkd(5, () => ({ hrv: 50 })))).result(); eq("nightly HRV present: no note", [nightly.stats.noHrv, nightly.stats.warnings.length, nightly.stats.hrv.nightly], [false, 0, 5]);
+    const slp = (await run(mkd(5, () => ({ hrvSleep: 50 })))).result(); eq("sleepData HRV counts as found", [slp.stats.noHrv, slp.stats.hrv.sleep], [false, 5]);
+    const wk = (await run(mkd(5, () => ({ hrvWeeklyAvg: 50 })))).result(); eq("weekly-only HRV: lower-resolution warning, not 'no HRV'", [wk.stats.noHrv, wk.stats.warnings.some(w => /only the weekly average/.test(w))], [false, true]);
+    eq("no days at all (e.g. only FIT files): no HRV note", (await run([])).result().stats.noHrv, false);
+
+    const i5 = Imp.create({}), p5 = []; i5.opts.onProgress = p => p5.push([p.done, p.total]);
+    await i5.addFiles([{ name: "UDSFile_1.json", text: uds }, { name: "UDSFile_2.json", text: uds }, { name: "UDSFile_3.json", text: uds }]);
+    eq("progress reports done/total and ends at 3 of 3", p5[p5.length - 1], [3, 3]);
+    const i6 = Imp.create({}), p6 = []; i6.opts.onProgress = p => p6.push([p.done, p.total]); await i6.addFile({ name: "export.zip", bytes: new Uint8Array(fs.readFileSync(path.join(tmp, "export.zip"))) }); await i6.addFiles([]);
+    eq("zip import: total = entry count (incl. nested zip entries), done ends equal to total, never above it", [p6.length > 0, p6.every(p => p[0] <= p[1]), p6[p6.length - 1][0] === p6[p6.length - 1][1], p6[p6.length - 1][1] >= 15], [true, true, true, true]);
+  }
+
+done();
 })().catch(e => { console.error(e); process.exit(1); });

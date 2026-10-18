@@ -25,12 +25,13 @@
 </header>
 <div id="demo-bar" class="demo-bar" role="status" hidden><b>DEMO DATA</b> <span>Synthetic – not real health data.</span> <button id="demo-clear" type="button">Remove demo</button></div>
 <div id="update-bar" class="update" hidden>A new version is ready. <button id="update-btn" class="btn primary" type="button">Update</button></div>
-<main id="app"><noscript>Garmin Lens needs JavaScript. Nothing is sent anywhere.</noscript></main>
+<main id="app"><noscript>Garmin Lens needs JavaScript. The page cannot send data anywhere.</noscript></main>
 <nav id="tabs" class="tabs" aria-label="Sections"></nav>
 <div id="install-banner" class="install" hidden>
   <img src="icons/icon-192.png" alt="" width="40" height="40">
-  <div class="it"><b>Install Garmin Lens</b><span>Add it to your home screen – works offline.</span></div>
+  <div class="it"><b id="install-title">Install Garmin Lens</b><span id="install-text">Add it to your home screen – works offline.</span></div>
   <button id="install-btn" class="btn primary" type="button">Install</button>
+  <a id="install-backup" class="btn" href="#/data" hidden>Backup</a>
   <button id="install-dismiss" class="hb" type="button" aria-label="Dismiss">✕</button>
 </div>
 <div id="toast" class="toast" role="status" hidden></div>

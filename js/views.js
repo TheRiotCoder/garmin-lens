@@ -4,6 +4,13 @@
   var App = window.GLApp, V = App.views, st = App.state, h = GLUI.h, num = GLUI.num, M = GLModels, I = GLInsights, S = GLStats, D = GLDates, C = GLCharts, L = M.LABELS;
   var ok = S.ok, card = GLUI.card;
   function ds() { return st.ds; }
+  // HRV availability: where the numbers came from, and an explicit message when the export had none
+  function hrvNote(d) {
+    if (!d || !d.n || d.demo) return null;
+    if (d.hrvMode === "none") return note("No HRV found in this export. Garmin Lens looked in healthStatusData, avgOvernightHrv in sleepData and hrvWeeklyAverage in TrainingReadiness. HRV charts, the HRV part of the recovery score and HRV-based strain flags are empty.", "warn");
+    if (d.hrvMode === "weekly") return note("HRV here is Garmin's weekly average (one number per week, taken from TrainingReadiness), which is lower resolution than nightly values. The log scale is applied to that weekly average, it counts half as much in the recovery score, and HRV-based strain flags are switched off.", "warn");
+    return null;
+  }
   function lastIdx() { var d = ds(); for (var i = d.n - 1; i >= 0; i--) if (ok(d.s.rhr[i]) || ok(d.s.hrv[i]) || ok(d.s.sleepH[i]) || ok(d.s.steps[i])) return i; return d.n - 1; }
   function avg7(arr) { return S.rolling(arr, 7, S.mean); }
   var bandCache = {};
@@ -60,6 +67,7 @@
     var d = ds(), i = arg && d.idx[arg] !== undefined ? d.idx[arg] : lastIdx(), date = d.dates[i], day = d.days[date] || {};
     function go(k) { if (k >= 0 && k < d.n) location.hash = "#/today/" + d.dates[k]; }
     main.appendChild(h("div", { class: "datebar" }, [h("button", { class: "btn", type: "button", "aria-label": "Previous day", disabled: i <= 0, onclick: function () { go(i - 1); } }, "‹"), h("input", { class: "inp", type: "date", value: date, min: d.dates[0], max: d.dates[d.n - 1], "aria-label": "Choose a date", onchange: function (e) { if (d.idx[e.target.value] !== undefined) location.hash = "#/today/" + e.target.value; } }), h("button", { class: "btn", type: "button", "aria-label": "Next day", disabled: i >= d.n - 1, onclick: function () { go(i + 1); } }, "›")]));
+    var hn = hrvNote(d); if (hn) main.appendChild(hn);
     var rec = M.recovery(d, i);
     if (rec) {
       var txt = rec.band === "green" ? "Higher than your recent normal – you look well recovered." : rec.band === "red" ? "Lower than your recent normal – an easy day may suit you." : "Close to your recent normal.";
@@ -75,7 +83,7 @@
     main.appendChild(sec("What stands out", date, so.length ? h("ul", { class: "list" }, so.map(function (x) { return h("li", null, [badge(x.cls === "bad" ? "watch" : x.cls === "warn" ? "note" : "good", x.cls), " ", x.text]); })) : h("p", { text: "Nothing unusual compared with your own normal." })));
     var sleepVal = ok(d.s.sleepH[i]) ? d.s.sleepH[i] : null;
     var tiles = [
-      { key: "hrv", rkey: "hrv", zkey: "lnHrv", label: "Overnight HRV", unit: "ms", fmt: function (v) { return num(v, 0); } },
+      { key: "hrv", rkey: "hrv", zkey: "lnHrv", label: d.hrvMode === "weekly" ? "HRV (weekly avg)" : "Overnight HRV", unit: "ms", fmt: function (v) { return num(v, 0); } },
       { key: "rhr", label: "Resting HR", unit: "bpm", fmt: function (v) { return num(v, 0); } },
       { key: "sleepH", label: "Sleep", fmt: function (v) { return GLUI.hm(v); }, extra: ok(d.s.sleepScore[i]) ? "Score " + d.s.sleepScore[i] + (ok(d.s.onset[i]) ? " · " + GLUI.clock(d.s.onset[i]) + "–" + GLUI.clock(d.s.wake[i]) : "") : null },
       { key: "stress", label: "Stress (avg)", fmt: function (v) { return num(v, 0); } },
@@ -117,7 +125,8 @@
     main.appendChild(sec("Baselines at a glance", "Latest value, 7/30/90-day averages, z-score of the latest value vs the 28 days before it, and the 90-day trend per 30 days (shown only when the line explains ≥10% of the variation).", h("div", { class: "tw" }, h("table", { class: "t" }, [h("tr", null, ["Metric", "Now", "7d", "30d", "90d", "z", "Δ30d"].map(function (x) { return h("th", { text: x }); }))].concat(rows)))));
     var c = h("section", { class: "card" }); main.appendChild(c);
     if (d.s.recovery.some(ok)) line(c, { title: "Recovery score", x: App.x(), series: [{ name: "Recovery", data: App.slice(d.s.recovery), color: "c1", width: 1.4, dots: true }, { name: "7-day avg", data: App.slice(avg7(d.s.recovery)), color: "c4", width: 2.6 }], zones: [{ from: 67, to: 100, color: "good", alpha: 0.1 }, { from: 0, to: 34, color: "bad", alpha: 0.1 }], yMin: 0, yMax: 100, notes: App.notes(App.x()), note: "Green zone ≥ 67, red zone < 34 (Garmin Lens's own score – see Today for the formula)." });
-    if (d.s.hrv.some(ok)) trendChart(c, "Overnight HRV (ms)", "hrv", { digits: 0 });
+    var hn2 = hrvNote(d); if (hn2) main.insertBefore(hn2, c);
+    if (d.s.hrv.some(ok)) trendChart(c, d.hrvMode === "weekly" ? "HRV – weekly average (ms, lower resolution)" : "Overnight HRV (ms)", "hrv", { digits: 0 });
     if (d.s.rhr.some(ok)) trendChart(c, "Resting heart rate (bpm)", "rhr", { digits: 0 });
     if (d.s.sleepH.some(ok)) line(c, { title: "Sleep duration (h)", x: App.x(), series: [{ name: "Sleep", type: "bar", data: App.slice(d.s.sleepH), color: "c5", digits: 1, fmt: function (v) { return GLUI.hm(v); } }, { name: "7-day avg", data: App.slice(avg7(d.s.sleepH)), color: "c4", width: 2.6, digits: 1, fmt: function (v) { return GLUI.hm(v); } }], hlines: [{ y: d.settings.sleepNeedH, label: "need " + d.settings.sleepNeedH + " h", color: "good" }], notes: App.notes(App.x()), yMin: 0 });
     if (d.s.stress.some(ok)) trendChart(c, "Stress (daily average, 0–100)", "stress", { digits: 0, note: false });
@@ -263,7 +272,7 @@
       r.bestRecovery ? h("p", { text: "Best recovery: " + r.bestRecovery.v + " on " + r.bestRecovery.date + " · lowest: " + r.worstRecovery.v + " on " + r.worstRecovery.date }) : null,
       r.sleepRegularity ? h("p", { text: "Bedtime variability (SD): " + Math.round(r.sleepRegularity.bedtimeSd) + " min" }) : null,
       r.anomalies.length ? note("Body-strain signature days: " + r.anomalies.map(function (a) { return a.start + (a.end !== a.start ? "→" + a.end : ""); }).join(", ")) : null,
-      r.notes.length ? h("p", { class: "muted", text: "Your events: " + r.notes.map(function (n) { return n.date.slice(5) + " " + (n.label || n.type); }).join("; ") }) : null,
+      r.notes.length ? h("p", { class: "muted", text: "Your events: " + r.notes.map(function (n) { return n.date.slice(5) + " " + (n.label || M.eventLabel(n.type)); }).join("; ") }) : null,
       h("div", { class: "actions" }, [h("button", { class: "btn", type: "button", onclick: function () { var t = lines.join("\n"); if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { GLUI.toast("Copied"); }, function () { GLUI.toast("Copy failed"); }); } }, "Copy as text"), h("button", { class: "btn", type: "button", onclick: function () { window.print(); } }, "Print / save PDF")])]));
   }
   var GOAL_KEYS = [["steps", "Steps", "day"], ["sleepH", "Sleep hours", "day"], ["stress", "Stress (avg)", "day"], ["rhr", "Resting HR", "day"], ["activeMin", "Intensity minutes", "week"], ["sessions", "Workouts", "week"], ["distanceKm", "Distance (km)", "week"], ["load", "Training load (hrTSS)", "week"]];
@@ -284,6 +293,6 @@
   function alerts(main) {
     var d = ds(), eps = M.anomalyEpisodes(d).reverse();
     main.appendChild(note("A flag means resting HR is up and HRV is down against your own baseline (HRV measured on a log scale), ideally with higher breathing rate or skin temperature too. One flagged night is only “worth watching”; 2 or more days in a row is a “strain pattern”. The same pattern follows alcohol, very hard training, travel, bad sleep and, for some people, the luteal phase of the menstrual cycle (tag it as a “cycle” event in Data → Events). Flagged days are left out of the baseline for up to 14 days, so a long illness keeps showing instead of becoming your new normal; after 14 days in a row the wording changes to “sustained change” and the new level is allowed into the baseline so the flag can clear. " + M.ANOMALY_CARE));
-    main.appendChild(sec("Detected episodes", eps.length + " found in your data", eps.length ? h("ul", { class: "list" }, eps.map(function (e) { return h("li", null, [badge(e.kind === "sustained" ? "sustained change" : e.kind === "pattern" ? "strain pattern" : "worth watching", e.kind === "pattern" ? "bad" : "warn"), " ", h("b", { text: e.start + (e.end !== e.start ? " → " + e.end : "") }), " (" + e.length + " day" + (e.length > 1 ? "s" : "") + "): " + e.signals.join(", "), e.matchesNote ? h("div", { class: "muted", text: "Your own event tags nearby: " + e.notes.join(", ") + " – may explain it." }) : null]); })) : h("p", { text: "No episodes. That is normal – it needs at least ~2 weeks of baseline." })));
+    main.appendChild(sec("Detected episodes", eps.length + " found in your data", eps.length ? h("ul", { class: "list" }, eps.map(function (e) { return h("li", null, [badge(e.kind === "sustained" ? "sustained change" : e.kind === "pattern" ? "strain pattern" : "worth watching", e.kind === "pattern" ? "bad" : "warn"), " ", h("b", { text: e.start + (e.end !== e.start ? " → " + e.end : "") }), " (" + e.length + " day" + (e.length > 1 ? "s" : "") + "): " + e.signals.join(", "), e.matchesNote ? h("div", { class: "muted", text: "Your own event tags nearby: " + e.notes.map(M.eventLabel).join(", ") + " – may explain it." }) : null]); })) : h("p", { text: "No episodes. That is normal – it needs at least ~2 weeks of baseline." })));
   }
 })();

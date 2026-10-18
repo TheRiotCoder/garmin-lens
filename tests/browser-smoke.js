@@ -151,15 +151,28 @@ const ROUTES = ['#/today', '#/trends', '#/sleep', '#/train', '#/insights/explore
 
   // ---------- data page: settings, events, import ----------
   await go('#/data');
-  check('Data: privacy statement, disclaimer, how-to-export steps', await ev(`/Nothing is uploaded/.test(document.body.textContent) && /Not medical advice/.test(document.body.textContent) && /Request Data Export/.test(document.body.textContent)`));
+  check('Data: privacy statement, disclaimer, how-to-export steps', await ev(`/The page cannot send data/.test(document.body.textContent) && /code-audited and has no network calls/.test(document.body.textContent) && /Shared storage origin/.test(document.body.textContent) && /dedicated origin is available on request/.test(document.body.textContent) && /about 7 days/.test(document.body.textContent) && /Not medical advice/.test(document.body.textContent) && /Request Data Export/.test(document.body.textContent)`));
   await ev(`document.getElementById('ev-t').value='caffeine'; document.getElementById('ev-l').value='<img src=x onerror=alert(1)> double espresso 6pm'; [...document.querySelectorAll('button')].find(b=>b.textContent==='Add event').click()`); await sleep(700);
   check('Events: added, shown as text (HTML is not interpreted)', await ev(`GLApp.state.notes.some(n => n.type === 'caffeine') && document.body.textContent.includes('<img src=x') && !document.querySelector('main img[src=x]')`));
+  check('Events: type shown with a human label ("Late caffeine"), not the raw key', await ev(`[...document.querySelectorAll('main li')].some(l => /Late caffeine/.test(l.textContent) && !/ · caffeine · /.test(l.textContent))`));
+  // cycle event with a range; delete asks for confirmation; every control on the Data page (with events listed) is >= 44 px
+  await ev(`document.getElementById('ev-t').value='cycle'; document.getElementById('ev-d').value='2026-10-01'; document.getElementById('ev-u').value='2026-10-07'; [...document.querySelectorAll('button')].find(b=>b.textContent==='Add event').click()`); await sleep(700);
+  check('Events: cycle event with an until date is stored and listed as "Menstrual cycle phase (to 2026-10-07)"', await ev(`GLApp.state.notes.some(n => n.type === 'cycle' && n.until === '2026-10-07') && /Menstrual cycle phase \\(to 2026-10-07\\)/.test(document.body.textContent) && GLApp.state.ds.cycleDays['2026-10-04'] === true`));
+  { const small = await smallTargets(); check('Data page with events listed: all tap targets >= 44 px', small.length === 0, small.slice(0, 6)); }
+  await ev(`window.__confirms = []; window.confirm = m => { window.__confirms.push(m); return false; }`);
+  await ev(`[...document.querySelectorAll('button[aria-label^="Delete event 2026-10-01"]')][0].click()`); await sleep(300);
+  check('Deleting a cycle event asks first (declined: event is kept)', await ev(`window.__confirms.length === 1 && /cycle event/.test(window.__confirms[0]) && GLApp.state.notes.some(n => n.type === 'cycle')`));
+  await ev(`window.confirm = m => true; [...document.querySelectorAll('button[aria-label^="Delete event 2026-10-01"]')][0].click()`); await sleep(700);
+  check('…and accepted: it is deleted', await ev(`!GLApp.state.notes.some(n => n.type === 'cycle')`));
   await ev(`document.getElementById('s-max').value='185'; document.getElementById('s-need').value='8'; [...document.querySelectorAll('button')].find(b=>b.textContent==='Save settings').click()`); await sleep(700);
   check('Settings: max HR 185 + sleep need 8 h applied to the model', await ev(`GLApp.state.ds.settings.maxHr === 185 && GLApp.state.ds.settings.sleepNeedH === 8 && !GLApp.state.ds.settings.maxHrAuto`));
   // import the export-style zip through the real file input
   const doc = await send('DOM.getDocument'); const q = await send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#file-in' });
+  await ev(`window.__w = []; window.__iv = setInterval(() => { const b = document.querySelector('.prog i'); if (b && b.parentElement && !b.parentElement.hidden) window.__w.push(b.style.width + '|' + (document.querySelector('.prog')?.nextSibling?.textContent || '')); }, 15)`);
   await send('DOM.setFileInputFiles', { nodeId: q.nodeId, files: [ZIP] });
   check('Import: zip with nested FIT is processed and demo data is replaced by it', await waitFor0(`!GLApp.state.hasDemo && /Imported \\d+ days/.test(document.body.textContent)`, 40000), await ev(`(document.querySelector('#app .note b')||{}).textContent`));
+  const widths = await ev(`clearInterval(window.__iv); window.__w`);
+  check('Import progress: shows "N of M files", reaches 100% while saving (not stuck at 95%)', widths.some(x => /\d+%\|Read \d+ of \d+ files/.test(x)) && widths.some(x => /^100%\|Saving/.test(x)), widths.slice(-4));
   const imp = await ev(`[GLApp.state.days.length, GLApp.state.acts.length, GLApp.state.days.some(d => d.demo), document.getElementById('demo-bar').hidden, GLApp.state.acts.some(a => a.source === 'fit' || a.source === 'summary+fit')]`);
   check('Import result: ~237 days, 140+ activities incl. the nested FIT, no demo flag, DEMO bar hidden', imp[0] >= 230 && imp[1] >= 140 && imp[2] === false && imp[3] === true && imp[4] === true, imp);
   check('Import used a worker (or main thread) without console errors', problems.length === 0, problems.slice(0, 3));
@@ -169,6 +182,16 @@ const ROUTES = ['#/today', '#/trends', '#/sleep', '#/train', '#/insights/explore
   const rt = await ev(`(async () => { const b = await GLApp.state.db.exportBundle(true); const enc = await GLCrypto.encrypt(JSON.stringify(b), 'smoke-test-passphrase', 3000); const dec = JSON.parse(await GLCrypto.decrypt(enc, 'smoke-test-passphrase')); let wrong = false; try { await GLCrypto.decrypt(enc, 'nope-nope-nope'); } catch (e) { wrong = true; } return [dec.days.length === b.days.length, dec.activities.length === b.activities.length, wrong, !enc.includes('restingHeartRate')]; })()`);
   check('Encrypted backup round-trips in the browser; wrong passphrase fails', rt.every(Boolean), rt);
   check('CSV export contains one row per day', await ev(`GLInsights.daysCsv(GLApp.state.ds).split('\\r\\n').length === GLApp.state.ds.n + 2`));
+
+  // ---------- iOS Add-to-Home-Screen hint; banner must not cover the toast ----------
+  await send('Network.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1' });
+  await ev(`localStorage.removeItem('garmin-lens-install-dismissed')`);
+  ld = waitEvent('Page.loadEventFired'); await send('Page.navigate', { url: APP + '?ios=1#/today' }); await ld; await waitFor0('window.__glReady === true');
+  check('iOS: Add-to-Home-Screen hint appears with backup advice (7-day eviction) and a Backup link', await waitFor0(`!document.getElementById('install-banner').hidden`, 5000) && await ev(`/Add to Home Screen/.test(document.getElementById('install-title').textContent) && /7 days/.test(document.getElementById('install-text').textContent) && /backup/i.test(document.getElementById('install-text').textContent) && !document.getElementById('install-backup').hidden && document.getElementById('install-btn').hidden`));
+  { const small = await smallTargets(); check('iOS hint: all tap targets >= 44 px', small.length === 0, small.slice(0, 6)); }
+  check('Toast is not covered by the install banner', await ev(`(() => { GLUI.toast('Saved'); const t = document.getElementById('toast').getBoundingClientRect(), b = document.getElementById('install-banner').getBoundingClientRect(); return t.height > 0 && t.bottom <= b.top + 1; })()`));
+  await send('Network.setUserAgentOverride', { userAgent: '' });
+  await ev(`localStorage.setItem('garmin-lens-install-dismissed', String(Date.now()))`);
 
   // ---------- offline ----------
   if (LOCAL) {
@@ -182,7 +205,7 @@ const ROUTES = ['#/today', '#/trends', '#/sleep', '#/train', '#/insights/explore
   }
   // ---------- wipe ----------
   await go('#/data'); await ev(`[...document.querySelectorAll('button')].find(b=>b.textContent==='Delete all my data').click()`); await sleep(900);
-  check('Delete all data: everything gone, welcome screen back', await ev(`GLApp.state.days.length === 0 && GLApp.state.notes.length === 0`) && await ev(`localStorage.length <= 1`), await ev(`Object.keys(localStorage)`));
+  check('Delete all data: everything gone, welcome screen back', await ev(`GLApp.state.days.length === 0 && GLApp.state.notes.length === 0`) && await ev(`Object.keys(localStorage).every(k => ['garmin-lens-theme', 'garmin-lens-install-dismissed'].includes(k))`), await ev(`Object.keys(localStorage)`));
   check('no console errors or exceptions during the whole run', problems.length === 0, problems.slice(0, 5));
 
   const failed = results.filter(r => !r).length; console.log(`\n${results.length - failed} passed, ${failed} failed`);
