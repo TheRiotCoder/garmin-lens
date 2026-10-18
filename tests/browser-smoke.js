@@ -30,7 +30,7 @@ async function ev(expr) { const r = await send('Runtime.evaluate', { expression:
 function waitEvent(name, ms = 15000) { return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('timeout ' + name)), ms); listeners.push({ name, fn: p => { clearTimeout(t); res(p); } }); }); }
 const results = [];
 function check(name, ok, info) { results.push(!!ok); console.log((ok ? 'PASS ' : 'FAIL ') + name + (info !== undefined ? ' -> ' + JSON.stringify(info) : '')); }
-const shot = async (name, full) => { await ev(`document.getElementById('install-banner').hidden = true; document.body.classList.remove('has-banner')`); await sleep(100); fs.writeFileSync(`${SHOTS}/${name}.png`, Buffer.from((await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: !!full })).data, 'base64')); };
+const shot = async (name, full) => { await ev(`document.getElementById('install-banner').hidden = true; document.body.classList.remove('has-banner'); document.getElementById('tabs').style.visibility = ${full ? "'hidden'" : "''"}`); await sleep(100); fs.writeFileSync(`${SHOTS}/${name}.png`, Buffer.from((await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: !!full })).data, 'base64')); };
 const waitFor0 = async (expr, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await ev(expr).catch(() => false)) return true; await sleep(200); } return false; };
 const go = async h => { await ev(`location.hash=${JSON.stringify(h)}`); await sleep(450); };
 const noOverflow = () => ev('document.documentElement.scrollWidth <= window.innerWidth + 1');

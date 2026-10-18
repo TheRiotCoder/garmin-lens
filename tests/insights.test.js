@@ -72,4 +72,14 @@ eq("numbers are never prefixed (negative stays numeric)", I.csvCell(-5.123456), 
 const csv = I.daysCsv(ds).split("\r\n"); eq("days CSV: header + one row per day + trailing newline", [csv.length, csv[0].startsWith("date,rhr,hrv")], [ds.n + 2, true]);
 ok("every CSV row has the same number of columns", csv.slice(0, -1).every(l => l.split(",").length === csv[0].split(",").length));
 const acsv = I.activitiesCsv(ds).split("\r\n"); eq("activities CSV rows", acsv.length - 2, ds.acts.length); ok("activity CSV has ISO UTC start", /T\d\d:\d\d:\d\d\.\d{3}Z/.test(acsv[1]));
+
+// ---- review notes: same-day lag is a baseline check; multiple-comparison caveat
+{
+  const e0 = I.explore(ds, "load", "lnHrv", { lag: 0, detrend: true }), e1 = I.explore(ds, "load", "lnHrv", { lag: 1, detrend: true });
+  ok("load → HRV at lag 0 carries the baseline-check warning", e0.warnings.some(w => /baseline check/.test(w) && /night BEFORE/.test(w)));
+  ok("load → HRV at lag +1 says this is the recovery timing", e1.warnings.some(w => /Next-day timing/.test(w)) && !e1.warnings.some(w => /baseline check/.test(w)));
+  ok("no baseline note for non-activity pairs (sleep → HRV)", !I.explore(ds, "sleepH", "lnHrv", { lag: 0 }).warnings.some(w => /baseline check/.test(w)));
+  eq("isBaselineCheck only for activity → overnight metric", [I.isBaselineCheck("load", "rhr"), I.isBaselineCheck("rhr", "load"), I.isBaselineCheck("sleepH", "rhr")], [true, false, false]);
+  ok("associations note warns about chance findings", /by chance/.test(I.associations(ds).note));
+}
 done();

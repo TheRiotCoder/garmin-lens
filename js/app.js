@@ -8,17 +8,11 @@
   window.GLApp = App;
 
   /* ---------- data ---------- */
-  function autoMaxHr(acts) {
-    var v = acts.map(function (a) { return a.maxHr; }).filter(function (x) { return S.ok(x) && x >= 120 && x <= 230; });
-    if (v.length >= 5) return Math.round(S.clamp(S.percentile(v, 98), 150, 210));
-    if (v.length) return Math.round(S.clamp(S.max(v), 150, 210));
-    return 190;
-  }
   function effectiveSettings() {
     var st = Object.assign({}, state.settings), clean = {};
     ["maxHr", "restHr", "lthr", "sleepNeedH"].forEach(function (k) { if (S.ok(+st[k]) && st[k] !== "" && st[k] !== null) clean[k] = +st[k]; });
     clean.sex = st.sex === "f" ? "f" : "m"; clean.freeDays = Array.isArray(st.freeDays) ? st.freeDays : [6, 0];
-    if (!clean.maxHr) { state.autoMaxHr = autoMaxHr(state.acts); clean.maxHr = state.autoMaxHr; clean.maxHrAuto = true; }
+    if (!clean.maxHr) { var est = M.estimateMaxHr(state.acts); state.autoMaxHr = est.value; clean.maxHr = est.value; clean.maxHrAuto = true; clean.maxHrSource = est.source; }
     return clean;
   }
   function loadAll() {

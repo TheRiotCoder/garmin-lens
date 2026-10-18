@@ -49,6 +49,16 @@
     if (!ok(s.lthr)) { var lt = (days || []).map(function (d) { return d.lthr; }).filter(ok); s.lthr = lt.length ? lt[lt.length - 1] : Math.round(0.88 * s.maxHr); s.lthrAuto = true; }
     return s;
   }
+  // Max-HR estimate from the user's own activities: ~99th percentile of time-weighted heart rate (spikes from a loose strap are
+  // rare in time, so they barely move it). Falls back to the 95th percentile of per-activity max HR, then to a flagged placeholder.
+  function estimateMaxHr(acts) {
+    var hist = new Array(251).fill(0), tot = 0;
+    (acts || []).forEach(function (a) { if (!a.hrHist && a.series && a.series.hr) { var st0 = a.series.step || 5; a.series.hr.forEach(function (h0) { var b0 = Math.round(h0); if (b0 >= 60 && b0 <= 230) { hist[b0] += st0; tot += st0; } }); } else if (a.hrHist && a.hrStep) for (var b = 60; b < a.hrHist.length && b <= 230; b++) { var c = a.hrHist[b] * a.hrStep; if (c) { hist[b] += c; tot += c; } } });
+    if (tot >= 3600) { var acc = 0; for (var b2 = 60; b2 < hist.length; b2++) { acc += hist[b2]; if (acc >= 0.99 * tot) return { value: b2, source: "sustained", hours: tot / 3600 }; } }
+    var v = (acts || []).map(function (a) { return a.maxHr; }).filter(function (x) { return ok(x) && x >= 120 && x <= 230; });
+    if (v.length >= 5) return { value: Math.round(S.percentile(v, 95)), source: "activity-max", n: v.length };
+    return { value: 185, source: "placeholder" };
+  }
   function bFactor(sex) { return sex === "f" ? 1.67 : 1.92; }
   function hrr(hr, s) { return S.clamp((hr - s.restHr) / (s.maxHr - s.restHr), 0, 1.1); }
   // Banister TRIMP for one heart-rate sample held for `minutes`
@@ -123,7 +133,8 @@
     if (!ok(ch) || ch < 5) return null;
     return { acute: ac, chronic: ch, ratio: ac / ch };
   }
-  function acwrZone(r) { return r === null ? null : r < 0.8 ? "detraining / low" : r <= 1.3 ? "sweet spot" : r <= 1.5 ? "caution" : "high"; }
+  var ACWR_HIGH = 1.3, ACWR_LOW = 0.8; // one shared threshold: used by the recovery-score penalty AND the advice text
+  function acwrZone(r) { return r === null ? null : r < ACWR_LOW ? "low (below your usual load)" : r <= ACWR_HIGH ? "steady" : "load jumped quickly"; }
   function monotony(load, i) { if (i < 6) return null; var w = load.slice(i - 6, i + 1), m = S.mean(w), sd = S.sd(w); if (!sd) return { monotony: null, strain: null, weekly: S.sum(w) }; return { monotony: m / sd, strain: S.sum(w) * (m / sd), weekly: S.sum(w) }; }
 
   /* ---------- baselines / z-scores ---------- */
@@ -149,11 +160,17 @@
   var RECOVERY_WEIGHTS = { hrv: 0.40, rhr: 0.20, sleep: 0.25, stress: 0.075, load: 0.075 }, RECOVERY_K = 1.3;
   function recovery(ds, i) {
     var comps = [], s = ds.settings, z;
-    z = zScore(ds, "lnHrv", i); if (z) comps.push({ key: "hrv", label: "Overnight HRV vs your 28-day normal", z: S.clamp(z.z, -3, 3), w: RECOVERY_WEIGHTS.hrv, detail: z });
+    z = zScore(ds, "lnHrv", i);
+    if (z) { // readiness uses the 7-night average of ln(HRV) against the 28-day baseline; single-night z is for flags only
+      var l7 = []; for (var k7 = Math.max(0, i - 6); k7 <= i; k7++) if (ok(ds.s.lnHrv[k7])) l7.push(ds.s.lnHrv[k7]);
+      var zz = z.z, lab = "Overnight HRV, single night vs your 28-day normal (fewer than 4 recent nights)", det = z;
+      if (l7.length >= 4) { var a7 = S.mean(l7); zz = (a7 - z.mean) / z.sd; lab = "Overnight HRV, 7-night average vs your 28-day normal"; det = { z: zz, value: a7, mean: z.mean, sd: z.sd, n: z.n, nights: l7.length, ratio: Math.exp(a7 - z.mean), singleNightZ: z.z }; }
+      comps.push({ key: "hrv", label: lab, z: S.clamp(zz, -3, 3), w: RECOVERY_WEIGHTS.hrv, detail: det });
+    }
     z = zScore(ds, "rhr", i); if (z) comps.push({ key: "rhr", label: "Resting HR vs your 28-day normal (lower is better)", z: S.clamp(-z.z, -3, 3), w: RECOVERY_WEIGHTS.rhr, detail: z });
     if (ok(ds.s.sleepH[i])) comps.push({ key: "sleep", label: "Sleep vs your need (" + s.sleepNeedH + " h)", z: S.clamp((ds.s.sleepH[i] - s.sleepNeedH) / 1.0, -3, 3), w: RECOVERY_WEIGHTS.sleep, detail: { value: ds.s.sleepH[i], need: s.sleepNeedH } });
     if (i > 0) { z = zScore(ds, "stress", i - 1); if (z) comps.push({ key: "stress", label: "Yesterday's stress vs normal (lower is better)", z: S.clamp(-z.z, -3, 3), w: RECOVERY_WEIGHTS.stress, detail: z }); }
-    if (ok(ds.s.tsbPrior[i]) && i >= 28) comps.push({ key: "load", label: "Training form (TSB) going into today", z: S.clamp(ds.s.tsbPrior[i] / 20, -2.5, 2.5), w: RECOVERY_WEIGHTS.load, detail: { tsb: ds.s.tsbPrior[i] } });
+    if (ok(ds.s.tsbPrior[i]) && i >= 28) { var acp = i > 0 ? acwr(ds.s.load, i - 1) : null, jump = !!(acp && acp.ratio > ACWR_HIGH); comps.push({ key: "load", label: "Training form (TSB) going into today" + (jump ? ", minus 1 because load jumped quickly (ratio above " + ACWR_HIGH + ")" : ""), z: S.clamp(ds.s.tsbPrior[i] / 20 - (jump ? 1 : 0), -2.5, 2.5), w: RECOVERY_WEIGHTS.load, detail: { tsb: ds.s.tsbPrior[i], ratio: acp ? acp.ratio : null, penalty: jump } }); }
     var hasCore = comps.some(function (c) { return c.key === "hrv" || c.key === "rhr"; });
     if (comps.length < 2 || !hasCore) return null;
     var wsum = S.sum(comps.map(function (c) { return c.w; })), zc = 0;
@@ -206,6 +223,13 @@
     else if (cnt >= 3) level = "possible";
     return { level: level, signals: sig, count: cnt };
   }
+  // Single flagged night = "worth watching"; 2+ consecutive flagged days = "strain pattern". Neither is a diagnosis.
+  function anomalyStatus(ds, i) {
+    var a = dayAnomaly(ds, i); if (!a.level) return { kind: null, days: 0, level: null, signals: a.signals };
+    var days = 1; for (var k = i - 1; k >= 0 && dayAnomaly(ds, k).level; k--) days++;
+    return { kind: days >= 2 ? "pattern" : "watch", days: days, level: a.level, signals: a.signals };
+  }
+  var ANOMALY_CARE = "This is not a diagnosis. Seek care for fever, chest pain, shortness of breath or fainting.";
   function anomalyEpisodes(ds) {
     var flagged = [];
     for (var i = 0; i < ds.n; i++) { var a = dayAnomaly(ds, i); if (a.level) flagged.push({ i: i, date: ds.dates[i], level: a.level, signals: a.signals.filter(function (x) { return x.pass; }) }); }
@@ -215,7 +239,7 @@
       var strong = e.days.filter(function (d) { return d.level === "strong"; }).length, keys = {}; e.days.forEach(function (d) { d.signals.forEach(function (s) { keys[s.label] = true; }); });
       var notes = []; for (var k = e.startI - 1; k <= e.endI; k++) (ds.notesByDate[ds.dates[k]] || []).forEach(function (n) { notes.push(n); });
       var explained = notes.filter(function (n) { return n.type === "alcohol" || n.type === "illness" || n.type === "travel" || n.type === "hard"; });
-      return { start: e.days[0].date, end: e.days[e.days.length - 1].date, length: e.days.length, strongDays: strong, level: strong ? "strong" : "possible", signals: Object.keys(keys), notes: explained.map(function (n) { return n.type; }), matchesNote: explained.length > 0 };
+      return { start: e.days[0].date, end: e.days[e.days.length - 1].date, length: e.days.length, kind: e.days.length >= 2 ? "pattern" : "watch", strongDays: strong, level: strong ? "strong" : "possible", signals: Object.keys(keys), notes: explained.map(function (n) { return n.type; }), matchesNote: explained.length > 0 };
     });
   }
 
@@ -261,5 +285,5 @@
 
   return { DEFAULTS: DEFAULTS, SERIES: SERIES, LABELS: LABELS, ZONE_NAMES: ZONE_NAMES, resolveSettings: resolveSettings, sleepClock: sleepClock, trimpSample: trimpSample, trimpFromSeries: trimpFromSeries, trimpHour: trimpHour, zoneEdges: zoneEdges, zonesFromSeries: zonesFromSeries, enrichActivity: enrichActivity,
     prepare: prepare, performanceChart: performanceChart, acwr: acwr, acwrZone: acwrZone, monotony: monotony, zScore: zScore, normalRange: normalRange, rollingBaseline: rollingBaseline, rollingBand: rollingBand, recovery: recovery, RECOVERY_WEIGHTS: RECOVERY_WEIGHTS, RECOVERY_K: RECOVERY_K,
-    sleepRegularity: sleepRegularity, socialJetLag: socialJetLag, sleepDebt: sleepDebt, dayAnomaly: dayAnomaly, anomalyEpisodes: anomalyEpisodes, decoupling: decoupling, hrDriftSlope: hrDriftSlope, paceStr: paceStr, personalRecords: personalRecords, weeklyZoneDistribution: weeklyZoneDistribution };
+    sleepRegularity: sleepRegularity, socialJetLag: socialJetLag, sleepDebt: sleepDebt, dayAnomaly: dayAnomaly, anomalyStatus: anomalyStatus, ANOMALY_CARE: ANOMALY_CARE, ACWR_HIGH: ACWR_HIGH, ACWR_LOW: ACWR_LOW, estimateMaxHr: estimateMaxHr, anomalyEpisodes: anomalyEpisodes, decoupling: decoupling, hrDriftSlope: hrDriftSlope, paceStr: paceStr, personalRecords: personalRecords, weeklyZoneDistribution: weeklyZoneDistribution };
 });

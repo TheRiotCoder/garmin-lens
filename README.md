@@ -33,7 +33,7 @@ Every formula is documented in [docs/METHODS.md](docs/METHODS.md) and covered by
 4. Optional extras: single activities from Garmin Connect web (activity page → ⚙ → Export Original / TCX / GPX / CSV) and the Activities-list CSV can be dropped in too.
 5. Re-import any time (e.g. monthly). Records merge by date and activity start time and are never duplicated. Importing real data replaces demo data.
 
-Set your **max HR, resting HR, threshold HR and sleep need** under Data → Settings; otherwise they are estimated (and labelled "auto").
+Set your **max HR, resting HR, threshold HR and sleep need** under Data → Settings; otherwise they are estimated (labelled "auto" – max HR comes from the ~99th percentile of your own sustained heart rate and the app asks you to confirm it; load numbers are approximate).
 
 ## Privacy
 
@@ -86,6 +86,10 @@ The `tests/fixtures/garmin-format/README.md` file says, per fixture, whether it 
 ## Limitations
 
 - A snapshot app: it only knows what is in the export you give it, and Garmin may change export formats without notice.
+- Garmin dates sleep/HRV by the day you wake up, so "same-day" timing is a pre-workout baseline check and recovery shows at +1 day. Wrist sleep stages are only roughly accurate.
+- Warnings are "worth watching" (1 night) or "strain pattern" (2+ days), never a diagnosis. Seek care for fever, chest pain, shortness of breath or fainting.
+- With several comparisons, one may look significant by chance; treat single hits as leads.
+- The importer has **not** been tested against a real Garmin export.
 - Garmin's nightly HRV is a single wrist-derived number; there is no beat-to-beat data in the export, so no DFA/real-HRV analysis.
 - Heart-rate load is only as good as your max/resting/threshold HR settings and the sensor (optical HR lags and drops out in intervals, cold, tattoos).
 - Activities with only an average HR underestimate load; activities without HR are excluded from load.

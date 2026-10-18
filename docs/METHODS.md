@@ -14,7 +14,7 @@ All of this is code in `js/models.js`, `js/insights.js` and `js/stats.js`, each 
 
 | Signal | z | Weight |
 |---|---|---|
-| Overnight ln HRV vs 28-day normal | +z | 40 % |
+| Overnight ln HRV, **7-night average** vs 28-day normal (single night only if < 4 nights) | +z | 40 % |
 | Resting HR vs 28-day normal | −z (lower is better) | 20 % |
 | Sleep duration vs your need | (hours − need)/1 h | 25 % |
 | Prior-day stress vs normal | −z | 7.5 % |
@@ -26,9 +26,10 @@ Bands: green ≥ 67, yellow 34–66, red < 34. Needs HRV or resting HR plus one 
 - **TRIMP** (Banister): per minute `x · 0.64 · e^(b·x)`, `x = (HR − rest)/(max − rest)`, `b = 1.92` (male) / `1.67` (female).
 - **hrTSS** = 100 × TRIMP / TRIMP(one hour at lactate-threshold HR). So an hour at threshold = 100.
 - Heart-rate source, best first: second-by-second FIT data (stored as a seconds-per-bpm histogram, so load can be recomputed if you change max HR) → Garmin's time-in-zone summary (zone mid-points) → average HR only (**underestimates intervals; flagged in the UI**) → no HR = no load invented.
+- **Max HR** is *estimated* from your activities (≈ 99th percentile of time-weighted heart rate, so brief sensor spikes barely count; falls back to the 95th percentile of per-activity maxima, then to a flagged placeholder of 185). The app asks you to confirm it. TRIMP/hrTSS are approximate.
 - **Zones**: % of max HR: 50–60, 60–70, 70–80, 80–90, 90–100.
 - **Fitness / fatigue / form** (Banister impulse–response, as popularised by TrainingPeaks): `CTL += (load − CTL)(1 − e^(−1/42))`, `ATL` with τ = 7; **TSB = CTL − ATL** (the "form" you start the day with = previous day's values). Seeded with your first-28-day mean load, so the first weeks are warm-up.
-- **Load ratio (ACWR, rolling)**: 7-day mean ÷ 28-day mean; needs 28 days and chronic ≥ 5. Zones < 0.8 low, 0.8–1.3 "sweet spot", 1.3–1.5 caution, > 1.5 high. *Caveat in the UI: the evidence that one threshold predicts injury is weak.*
+- **Load ratio (rolling 7 d ÷ 28 d)**: needs 28 days and chronic ≥ 5. One shared threshold, **1.3**, is used both for the recovery-score penalty (load component −1) and for the advice text. Above 1.3 the UI says "load jumped quickly – associated with fatigue"; below 0.8 "low". It does **not** claim to predict injury (the evidence for any single cut-off is weak).
 - **Monotony** (Foster) = 7-day mean ÷ SD of daily load; **strain** = weekly load × monotony.
 
 ## Sleep
@@ -38,7 +39,7 @@ Bands: green ≥ 67, yellow 34–66, red < 34. Needs HRV or resting HR plus one 
 - **Sleep debt**: Σ over the last 7 nights of (need − slept), floored at 0, shown when ≥ 60 % of nights exist. It does not model "repayment".
 
 ## Body-strain ("illness-like") signature
-A day is flagged **strong** when resting HR is ≥ 1.5σ **and** ≥ 3 bpm above baseline, ln HRV is ≥ 1.5σ **and** ≥ 15 % below, **and** breathing rate (≥ 1.5σ, ≥ 0.8 brpm) or skin temperature (≥ 1.5σ, ≥ 0.5 °C) is up; **possible** with just RHR + HRV (or three signals). Consecutive flagged days merge into an episode. The same pattern follows alcohol, hard training, travel and poor sleep, so episodes next to your own event tags are labelled as possibly explained. It is a screening hint, never a diagnosis.
+**Wording shown to you:** one flagged night = "worth watching"; ≥ 2 consecutive flagged days = "strain pattern". Always with "not a diagnosis; seek care for fever, chest pain, shortness of breath or fainting". Internally a day is graded **strong** when resting HR is ≥ 1.5σ **and** ≥ 3 bpm above baseline, ln HRV is ≥ 1.5σ **and** ≥ 15 % below, **and** breathing rate (≥ 1.5σ, ≥ 0.8 brpm) or skin temperature (≥ 1.5σ, ≥ 0.5 °C) is up; **possible** with just RHR + HRV (or three signals). Consecutive flagged days merge into an episode. The same pattern follows alcohol, hard training, travel and poor sleep, so episodes next to your own event tags are labelled as possibly explained. It is a screening hint, never a diagnosis.
 
 ## Activity analytics
 - **Aerobic decoupling (Pa:HR)**: after a 10-minute warm-up, split into halves; efficiency = mean speed ÷ mean HR; `decoupling = (EF₁ − EF₂)/EF₁`. Shown only for ≥ 40-minute activities and labelled "not meaningful" when speed varies a lot within halves (CV > 0.18: intervals, hills, stops). Rules of thumb quoted (< 5 % / 5–10 % / > 10 %) are coaching heuristics, not standards.
@@ -55,3 +56,13 @@ A day is flagged **strong** when resting HR is ≥ 1.5σ **and** ≥ 3 bpm above
 
 ## Reports and goals
 Weekly (Mon–Sun) and calendar-month reports compare each metric's mean with the previous period of the same length and highlight changes ≥ 0.5 SD of your 90-day baseline. Goals evaluate daily goals over the last 30 days and weekly goals over 12 weeks; the current incomplete week is never counted as a miss.
+
+
+## Timing: sleep and HRV are dated by wake-up day
+Garmin assigns a night's sleep, overnight HRV and resting HR to the day you **wake up**. So the HRV for date *D* was measured the night **before** *D*'s workout. In the explorer, lag 0 for activity → overnight pairs is labelled a **baseline check**; recovery after a hard day shows up at **+1 day**.
+
+## Other caveats (also shown in the app)
+- Wrist-based sleep stages (deep/REM especially) are only roughly accurate.
+- Stress is scored against your own baseline, not a fixed scale.
+- With several comparisons, one may look significant by chance; q-values reduce but do not remove this.
+- The importer has not been tested against a real Garmin export.

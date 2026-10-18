@@ -28,7 +28,7 @@ near("TSB (form) = CTL − ATL", step.tsb[71], step.ctl[71] - step.atl[71], 0.11
 const flat = M.performanceChart(new Array(60).fill(80), S0); near("constant load: CTL = ATL = load, TSB 0", flat.ctl[59], 80, 0.01); near("TSB 0", flat.tsb[59], 0, 0.01);
 near("tsbPrior is yesterday's CTL−ATL", step.tsbPrior[40], step.ctl[39] - step.atl[39], 0.11);
 const lw = new Array(21).fill(0).concat(new Array(7).fill(100)); near("ACWR: 7 d at 100 after 21 d rest = 100 / 25 = 4.0", M.acwr(lw, 27).ratio, 4, 1e-9);
-eq("ACWR unavailable before 28 days", M.acwr(lw, 20), null); eq("ACWR zones", [M.acwrZone(0.5), M.acwrZone(1), M.acwrZone(1.4), M.acwrZone(1.8)], ["detraining / low", "sweet spot", "caution", "high"]);
+eq("ACWR unavailable before 28 days", M.acwr(lw, 20), null); eq("shared ACWR threshold is 1.3 (1.3 itself is still steady)", [M.ACWR_HIGH, M.acwrZone(1.3)], [1.3, "steady"]); eq("ACWR zones", [M.acwrZone(0.5), M.acwrZone(1), M.acwrZone(1.4), M.acwrZone(1.8)], ["low (below your usual load)", "steady", "load jumped quickly", "load jumped quickly"]);
 const mo = M.monotony([10, 20, 30, 40, 50, 60, 70], 6); near("Foster monotony = mean/sd = 40/21.602 = 1.8516", mo.monotony, 1.85164, 1e-4); near("strain = weekly × monotony = 518.46", mo.strain, 518.46, 0.01);
 eq("monotony of identical days is null, not infinity", M.monotony(new Array(7).fill(50), 6).monotony, null);
 
@@ -56,7 +56,12 @@ const r0 = M.recovery(ds0, 35); eq("everything exactly at your normal → score 
 ok("components sum to weights 1", Math.abs(r0.components.reduce((s, c) => s + c.weight, 0) - 1) < 1e-9 && r0.components.length === 5);
 const hi = flatDays.slice(); hi[39] = Object.assign({}, hi[39], { hrv: 60 * Math.exp(0.1) });
 const r1 = M.recovery(M.prepare(hi, [], [], Object.assign({}, S0, { sleepNeedH: 7.5 })), 39);
-eq("HRV +2 floor-SDs (ln +0.10): z=+2 × 0.40 weight → zc 0.8 → Φ(0.8×1.3)=85", r1.score, 85); eq("green band", r1.band, "green");
+eq("ONE night of HRV +0.10 ln barely moves readiness (7-night avg z=0.286 → zc 0.114 → Φ(0.149)=56)", r1.score, 56); eq("single night stays yellow", r1.band, "yellow");
+const sus = flatDays.map((d, k) => k >= 33 ? Object.assign({}, d, { hrv: 60 * Math.exp(0.1) }) : d);
+const r1b = M.recovery(M.prepare(sus, [], [], Object.assign({}, S0, { sleepNeedH: 7.5 })), 39);
+eq("HRV +2 floor-SDs held for 7 nights: z=+2 × 0.40 weight → zc 0.8 → Φ(0.8×1.3)=85", r1b.score, 85); eq("green band", r1b.band, "green");
+eq("HRV component says it uses the 7-night average", r1b.components.find(c => c.key === "hrv").detail.nights, 7);
+near("HRV ratio shown as a ratio, not a log difference", r1b.components.find(c => c.key === "hrv").detail.ratio, Math.exp(0.1), 1e-9);
 const lo = flatDays.slice(); lo[39] = { date: lo[39].date, hrv: 60 * Math.exp(-0.2), rhr: 62, sleepSec: 5 * 3600, stressAvg: 30 };
 const r2 = M.recovery(M.prepare(lo, [], [], S0), 39); ok("bad HRV + high RHR + short sleep → red", r2.band === "red" && r2.score < 20, r2.score);
 eq("not enough history → null (no invented score)", M.recovery(M.prepare(flatDays.slice(0, 6), [], [], S0), 5), null);
@@ -104,4 +109,25 @@ const sj2 = M.socialJetLag(ds, lastDay); ok("demo: social jet lag between 30 and
 const zonesSum = M.weeklyZoneDistribution(ds, "2026-10-05"); ok("weekly zone distribution sums to 100 %", Math.abs(zonesSum.pct.slice(1).reduce((a, b) => a + b) - 100) < 1e-6 || zonesSum.total === 0);
 ok("every demo activity with HR got a load", ds.acts.filter(a => a.avgHr).every(a => a.hrtss > 0));
 ok("prepare() keeps day and activity counts", ds.acts.length === dd.activities.length && ds.n >= dd.days.length);
+
+// ---- review notes: single night vs strain pattern, max-HR estimate, shared ACWR threshold
+{
+  const two = base.slice(); two[29] = { date: two[29].date, rhr: 63, hrv: 40, sleepResp: 16.5 }; two[30] = { date: two[30].date, rhr: 64, hrv: 41, sleepResp: 16.5 };
+  const dsT = M.prepare(two, [], [], S0);
+  eq("one flagged night → 'worth watching' (1 day)", [M.anomalyStatus(M.prepare(ill, [], [], S0), 30).kind, M.anomalyStatus(M.prepare(ill, [], [], S0), 30).days], ["watch", 1]);
+  eq("2 consecutive flagged days → 'strain pattern'", [M.anomalyStatus(dsT, 30).kind, M.anomalyStatus(dsT, 30).days], ["pattern", 2]);
+  eq("first of the two days is still only 'watch'", M.anomalyStatus(dsT, 29).kind, "watch");
+  eq("unflagged day → kind null", M.anomalyStatus(M.prepare(base, [], [], S0), 30).kind, null);
+  eq("episode kind: 1-day = watch, 2-day = pattern", [M.anomalyEpisodes(M.prepare(ill, [], [], S0))[0].kind, M.anomalyEpisodes(dsT)[0].kind], ["watch", "pattern"]);
+  ok("care text says not a diagnosis and lists red flags", /not a diagnosis/.test(M.ANOMALY_CARE) && /fever, chest pain, shortness of breath or fainting/.test(M.ANOMALY_CARE));
+  const histA = new Array(251).fill(0); histA[150] = 600; histA[170] = 200; histA[195] = 2;
+  const est = M.estimateMaxHr([{ hrHist: histA, hrStep: 5 }]);
+  eq("max HR = 99th percentile of sustained HR; a 10 s spike at 195 is ignored", [est.value, est.source], [170, "sustained"]);
+  eq("no HR data → flagged placeholder, never silently 190", [M.estimateMaxHr([]).source, M.estimateMaxHr([]).value !== 190], ["placeholder", true]);
+  eq("too little sustained data falls back to activity max HR", M.estimateMaxHr([1, 2, 3, 4, 5].map(k => ({ maxHr: 170 + k }))).source, "activity-max");
+  const sr = { step: 5, hr: Array.from({ length: 800 }, (_, k) => k < 792 ? 150 : 185) };
+  eq("series-only activities also feed the estimate (≥1 h needed)", M.estimateMaxHr([{ series: sr }, { series: sr }]).value, 150);
+  let jumps = 0, penalised = 0; for (let k = 29; k < ds.n; k++) { const a = M.acwr(ds.s.load, k - 1); if (a && a.ratio > M.ACWR_HIGH) { jumps++; const rc = M.recovery(ds, k); const lc = rc && rc.components.find(c => c.key === "load"); if (lc && lc.detail.penalty) penalised++; } }
+  ok("recovery penalty applies exactly when ratio > 1.3 (same threshold as the advice)", jumps === 0 || penalised > 0, [jumps, penalised]);
+}
 done();

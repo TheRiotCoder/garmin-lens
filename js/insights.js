@@ -24,6 +24,10 @@
   function seriesFor(ds, key, detrend) { var a = ds.s[key]; if (!a) return null; return detrend ? deviation(a) : a; }
 
   /* ---------- correlation explorer ---------- */
+  // Garmin dates sleep / overnight HRV / resting HR by the day you WAKE UP, so the reading for date D was recorded the night before D's workout.
+  var ACTIVITY_KEYS = { load: 1, activeMin: 1, steps: 1, stress: 1 }, OVERNIGHT_KEYS = { lnHrv: 1, hrv: 1, rhr: 1, sleepScore: 1, sleepH: 1, deepPct: 1, remPct: 1, awakeMin: 1, resp: 1, spo2: 1, skin: 1, bbHigh: 1, sleepStress: 1 };
+  function isBaselineCheck(x, y) { return !!(ACTIVITY_KEYS[x] && OVERNIGHT_KEYS[y]); }
+  var BASELINE_NOTE = "Same-day timing is a baseline check, not recovery: Garmin dates sleep and overnight HRV by the day you wake up, so this day's HRV / resting HR was measured the night BEFORE this day's activity. Look at +1 day for recovery.";
   function explore(ds, xKey, yKey, opts) {
     opts = opts || {}; var lag = opts.lag || 0, method = opts.method || "spearman", detrend = !!opts.detrend;
     var xs = seriesFor(ds, xKey, detrend), ys = seriesFor(ds, yKey, detrend);
@@ -41,6 +45,8 @@
     else if (n < 30) warnings.push("Only " + n + " paired days – treat this as a hint, not a finding.");
     if (ne < n * 0.7) warnings.push("Daily values are strongly autocorrelated, so the effective sample is about " + Math.round(ne) + " independent days; p-value and interval use that.");
     if (xKey === yKey && lag === 0) warnings.push("Comparing a series with itself.");
+    if (lag === 0 && isBaselineCheck(xKey, yKey)) warnings.push(BASELINE_NOTE);
+    if (lag === 1 && isBaselineCheck(xKey, yKey)) warnings.push("Next-day timing is the one that shows recovery: the HRV, resting HR and sleep dated tomorrow were recorded the night after today's activity.");
     warnings.push("Correlation is not causation: a third factor (training block, illness, season, travel) can drive both.");
     return out;
   }
@@ -67,11 +73,11 @@
     }); });
     var q = bhAdjust(out.map(function (o) { return o.p; })); out.forEach(function (o, i) { o.q = q[i]; o.significant = o.q < 0.05 && Math.abs(o.r) >= 0.2; o.text = assocText(o); });
     out.sort(function (a, b) { return Math.abs(b.r) - Math.abs(a.r); });
-    return { tests: out.length, results: out, note: "Each row is one of " + out.length + " tests; q-values correct for running many. Values are deviations from your own 28-day normal. Association only – not proof of cause." };
+    return { tests: out.length, results: out, note: "Each row is one of " + out.length + " tests; q-values correct for running many. Values are deviations from your own 28-day normal. Association only – not proof of cause. With this many comparisons, a few will look significant by chance; q-values reduce but do not remove that, so treat single hits as leads to re-check later, not findings." };
   }
   var NAME = { lnHrv: "overnight HRV", rhr: "resting HR", sleepScore: "sleep score", deepPct: "deep-sleep share", stress: "stress", bbHigh: "Body Battery peak", sleepH: "sleep duration", load: "training load", onset: "bedtime", activeMin: "intensity minutes", steps: "steps", spo2: "SpO2", resp: "breathing rate" };
   function assocText(o) {
-    var when = o.lag === 0 ? "the same day" : o.lag === 1 ? "the next day" : o.lag + " days later", up = o.x === "onset" ? "later than" : "higher than";
+    var when = o.lag === 0 ? (isBaselineCheck(o.x, o.y) ? "that same morning (a baseline check – the reading came before the activity)" : "the same day") : o.lag === 1 ? "the next day" : o.lag + " days later", up = o.x === "onset" ? "later than" : "higher than";
     return "When " + (NAME[o.x] || o.x) + " is " + up + " your normal, " + (NAME[o.y] || o.y) + " tends to be " + (o.r > 0 ? "higher" : "lower") + " " + when + " (" + strengthLabel(o.r) + ", ρ=" + o.r.toFixed(2) + ", n=" + o.n + ").";
   }
 
@@ -191,5 +197,5 @@
     return toCsv(cols, ds.acts.slice().sort(function (a, b) { return a.start - b.start; }).map(function (a) { return [a.date, ok(a.start) ? new Date(a.start).toISOString() : "", a.name, a.type, a.group, ok(a.durationSec) ? a.durationSec / 60 : null, ok(a.distanceM) ? a.distanceM / 1000 : null, a.avgHr, a.maxHr, a.trimp, a.hrtss, a.loadSource, a.calories, a.ascentM]; }));
   }
 
-  return { autocorr1: autocorr1, effectiveN: effectiveN, strengthLabel: strengthLabel, deviation: deviation, bhAdjust: bhAdjust, explore: explore, lagScan: lagScan, associations: associations, compareGroups: compareGroups, hypotheses: hypotheses, lateWorkoutDates: lateWorkoutDates, trendSummary: trendSummary, lastIndex: lastIndex, periodReport: periodReport, weeklyReport: weeklyReport, monthlyReport: monthlyReport, weeks: weeks, months: months, goalValues: goalValues, evaluateGoal: evaluateGoal, csvCell: csvCell, toCsv: toCsv, daysCsv: daysCsv, activitiesCsv: activitiesCsv, DAY_COLS: DAY_COLS, PRED: PRED, TARG: TARG };
+  return { isBaselineCheck: isBaselineCheck, BASELINE_NOTE: BASELINE_NOTE, autocorr1: autocorr1, effectiveN: effectiveN, strengthLabel: strengthLabel, deviation: deviation, bhAdjust: bhAdjust, explore: explore, isBaselineCheck: isBaselineCheck, BASELINE_NOTE: BASELINE_NOTE, lagScan: lagScan, associations: associations, compareGroups: compareGroups, hypotheses: hypotheses, lateWorkoutDates: lateWorkoutDates, trendSummary: trendSummary, lastIndex: lastIndex, periodReport: periodReport, weeklyReport: weeklyReport, monthlyReport: monthlyReport, weeks: weeks, months: months, goalValues: goalValues, evaluateGoal: evaluateGoal, csvCell: csvCell, toCsv: toCsv, daysCsv: daysCsv, activitiesCsv: activitiesCsv, DAY_COLS: DAY_COLS, PRED: PRED, TARG: TARG };
 });
