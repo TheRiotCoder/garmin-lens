@@ -114,7 +114,9 @@
     list.forEach(function (h) { h.effects.forEach(function (e) {
       var g = { n1: e.n1, d: e.d, p: e.q }; e.verdict = e.n1 < 5 ? "too-few" : (e.q < 0.05 && Math.abs(e.d) >= 0.5 && e.n1 >= 8) ? "supported" : (e.p < 0.1 && Math.abs(e.d) >= 0.4) ? "hint" : "none";
       var better = (GOOD_DIR[e.key] || 0) * e.diff > 0, pct = e.mean2 ? Math.abs(e.diff / e.mean2) * 100 : null;
-      e.text = e.verdict === "none" ? "No clear difference in " + e.label + "." : e.verdict === "too-few" ? "Only " + e.n1 + " examples – too few." : (e.verdict === "hint" ? "Possible: " : "") + e.label + " was " + Math.abs(e.diff).toFixed(Math.abs(e.diff) < 1 ? 2 : 1) + (pct !== null && pct < 400 ? " (" + pct.toFixed(0) + "%)" : "") + (e.diff > 0 ? " higher" : " lower") + " than on other days (" + e.n1 + " vs " + e.n2 + " days)" + (better ? " – better" : GOOD_DIR[e.key] ? " – worse" : "") + ".";
+      var pctTxt = e.key === "lnHrv" ? "about " + Math.abs((Math.exp(e.diff) - 1) * 100).toFixed(0) + "%" : null;
+      if (e.key === "lnHrv") e.label = "Overnight HRV";
+      e.text = e.verdict === "none" ? "No clear difference in " + e.label + "." : pctTxt ? (e.verdict === "hint" ? "Possible: " : "") + "Overnight HRV was " + pctTxt + (e.diff > 0 ? " higher" : " lower") + " than on other days (" + e.n1 + " vs " + e.n2 + " days)" + (better ? " – better" : " – worse") + "." : e.verdict === "too-few" ? "Only " + e.n1 + " examples – too few." : (e.verdict === "hint" ? "Possible: " : "") + e.label + " was " + Math.abs(e.diff).toFixed(Math.abs(e.diff) < 1 ? 2 : 1) + (pct !== null && pct < 400 ? " (" + pct.toFixed(0) + "%)" : "") + (e.diff > 0 ? " higher" : " lower") + " than on other days (" + e.n1 + " vs " + e.n2 + " days)" + (better ? " – better" : GOOD_DIR[e.key] ? " – worse" : "") + ".";
     }); h.verdict = h.effects.some(function (e) { return e.verdict === "supported"; }) ? "supported" : h.effects.some(function (e) { return e.verdict === "hint"; }) ? "hint" : "none"; });
     return list;
   }

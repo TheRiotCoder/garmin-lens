@@ -84,3 +84,16 @@ Other facts that matter:
 1. **Primary**: local-first PWA that imports the Garmin "Export Your Data" ZIP (and individual JSON/CSV/FIT/TCX/GPX files). Parsing and storage happen on the device (IndexedDB). No server, no account, no network calls (CSP `connect-src 'self'`).
 2. **Optional/advanced** (documented, untested): a user-run script using `python-garminconnect` to write a Garmin Lens bundle.
 3. Because it is a snapshot, the user re-exports from time to time (the importer merges by date and never duplicates).
+
+## Sources consulted for field names (public repositories, read as documentation only)
+
+No third-party code is copied into Garmin Lens (some of it is GPL or unlicensed); only facts (file names, field names, units) were used, then re-implemented and tested independently.
+
+- `radikkhaziev/triathlon-agent` – parser/DTOs for `healthStatusData`, TrainingReadiness, acute load, VO2max, bio-metrics.
+- `arpanghosh8453/garmin-grafana` – PR #191 and issue #189 (record shapes pasted by users), issues on export content.
+- `tintin305/GarminSleepAnalytics` – real `sleepData` records.
+- Kyoro-HealthHub docs ("Importing the Garmin GDPR export") – export request flow and timing wording.
+- Two further small public Garmin-export parsers (a TypeScript importer and a pandas helper script) were used to cross-check daily-summary and sleep fields; their exact repository names were not recorded in my notes, so they are not cited individually.
+- `dtcooper/python-fitparse` (MIT) – real Garmin FIT files used as test fixtures and as ground truth for the FIT parser.
+- Garmin FIT SDK documentation – message/field numbers, epoch (631 065 600 s), semicircles, compressed timestamps.
+- Roenneberg et al., Munich ChronoType Questionnaire – social jet lag formula; Banister et al. impulse–response model; Foster et al. monotony/strain.

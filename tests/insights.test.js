@@ -40,6 +40,7 @@ const late = byId("late"); ok("demo: late workouts → worse sleep, supported", 
 ok("demo: late workouts push bedtime later (~+45 min planted)", late.effects.find(e => e.key === "onset").diff > 25);
 const alc = byId("note:alcohol"); ok("demo: alcohol tag → higher RHR & lower sleep score next day", alc.effects.find(e => e.key === "rhr").diff > 1.5 && alc.effects.find(e => e.key === "sleepScore").verdict === "supported" && alc.days === dd.truth.alcohol.length, alc.effects.map(e => e.text));
 ok("demo: hard days lower next-day HRV", byId("hard").effects.find(e => e.key === "lnHrv").diff < -0.05);
+ok("HRV effects are reported as a percentage, not as a raw log difference", late.effects.find(e => e.key === "lnHrv").text.includes("Overnight HRV was about") && /about \d+%/.test(late.effects.find(e => e.key === "lnHrv").text), late.effects.find(e => e.key === "lnHrv").text);
 ok("every effect carries a plain-English sentence and a q-value", hyp.every(h => h.effects.every(e => typeof e.text === "string" && e.q !== undefined)));
 ok("lateWorkoutDates uses LOCAL start time", Object.keys(I.lateWorkoutDates(ds, 19.5)).length >= dd.truth.late.length - 3, [Object.keys(I.lateWorkoutDates(ds, 19.5)).length, dd.truth.late.length]);
 const as = I.associations(ds);
