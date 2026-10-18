@@ -1,0 +1,50 @@
+const { ok, eq, rejects, done } = require("./harness");
+const DB = require("../js/db.js"), C = require("../js/crypto.js"), G = require("../js/demo.js");
+(async () => {
+  // ---- demo generator
+  const a = G.generate(), b = G.generate(), c = G.generate({ seed: 7 });
+  ok("demo is deterministic for a seed", JSON.stringify(a.days) === JSON.stringify(b.days) && JSON.stringify(a.activities) === JSON.stringify(b.activities));
+  ok("different seed gives different data", JSON.stringify(a.days) !== JSON.stringify(c.days));
+  ok("every demo record is labelled demo", a.days.every(d => d.demo === true) && a.activities.every(x => x.demo === true) && a.annotations.every(n => n.demo === true) && a.demo === true);
+  ok("demo has realistic size", a.days.length > 200 && a.activities.length > 100, [a.days.length, a.activities.length]);
+  const rhr = a.days.map(d => d.rhr).filter(x => x), hrv = a.days.map(d => d.hrv).filter(x => x);
+  ok("RHR in plausible range 40–75", Math.min(...rhr) >= 40 && Math.max(...rhr) <= 75, [Math.min(...rhr), Math.max(...rhr)]);
+  ok("HRV in plausible range 20–120 ms", Math.min(...hrv) >= 20 && Math.max(...hrv) <= 120, [Math.min(...hrv), Math.max(...hrv)]);
+  ok("planted truth recorded (illness, travel, alcohol, late)", a.truth.illness.length === 4 && a.truth.travel.length === 6 && a.truth.alcohol.length > 8 && a.truth.late.length > 10);
+  ok("a few days are missing (watch off)", a.days.length < 240);
+  // ---- db
+  const db = DB.memory();
+  await db.putDays([{ date: "2026-01-01", rhr: 50, steps: 100 }, { date: "2026-01-02", rhr: 51, demo: true }]);
+  await db.putDays([{ date: "2026-01-01", hrv: 60 }]);
+  let days = await db.getDays();
+  eq("real records merge field-wise", [days[0].rhr, days[0].hrv, days[0].steps], [50, 60, 100]);
+  await db.putDays([{ date: "2026-01-02", rhr: 49 }]);
+  days = await db.getDays();
+  ok("a real record REPLACES a demo record (never mixed)", days[1].rhr === 49 && !days[1].demo);
+  await db.putDays([{ date: "2026-01-03", rhr: 60, demo: true }]);
+  ok("hasDemo true", await db.hasDemo());
+  await db.putActivities([{ id: "a1", start: 2, demo: true, series: { hr: [1, 2, 3] } }, { id: "a2", start: 1 }]);
+  await db.putNote({ id: "n1", date: "2026-01-01", type: "alcohol", label: "x" }); await db.putNote({ id: "n2", date: "2026-01-03", type: "alcohol", label: "demo", demo: true });
+  eq("counts", await db.counts(), { days: 3, activities: 2, notes: 2 });
+  eq("activities sorted by start, series stored separately", [(await db.getActivities()).map(x => x.id), (await db.getActivities())[1].series === undefined, (await db.getSeries("a1")).hr], [["a2", "a1"], true, [1, 2, 3]]);
+  const bundle = await db.exportBundle(true);
+  ok("bundle round-trips series when asked", bundle.format === "garmin-lens-bundle" && bundle.activities.find(x => x.id === "a1").series.hr.length === 3 && bundle.demo === true);
+  ok("bundle without series is slim", !(await db.exportBundle(false)).activities.some(x => x.series || x.hasSeries));
+  await db.clearDemo();
+  eq("clearDemo removes only demo rows (days, acts, series, notes)", [await db.counts(), await db.getSeries("a1"), await db.hasDemo()], [{ days: 2, activities: 1, notes: 1 }, null, false]);
+  await db.setMeta("settings", { maxHr: 190 }); eq("meta round trip", await db.getMeta("settings"), { maxHr: 190 }); eq("meta default", await db.getMeta("nope", 5), 5);
+  await db.clearAll(); eq("clearAll empties everything", [await db.counts(), await db.getMeta("settings", null)], [{ days: 0, activities: 0, notes: 0 }, null]);
+  // ---- crypto (fast iteration count for tests)
+  const plain = JSON.stringify({ hello: "wörld", n: [1, 2, 3] }), enc = await C.encrypt(plain, "correct horse battery", 2000);
+  ok("encrypted text is JSON with magic, not plaintext", C.isEncrypted(enc) && !enc.includes("wörld") && !enc.includes("hello"));
+  eq("decrypt round trip", await C.decrypt(enc, "correct horse battery"), plain);
+  await rejects("wrong passphrase rejected", C.decrypt(enc, "wrong passphrase!!"), /Wrong passphrase/);
+  const o = JSON.parse(enc), ct = Buffer.from(o.ct, "base64"); ct[3] ^= 1; o.ct = ct.toString("base64");
+  await rejects("tampered ciphertext rejected (GCM tag)", C.decrypt(JSON.stringify(o), "correct horse battery"), /Wrong passphrase or damaged/);
+  await rejects("short passphrase refused", C.encrypt("x", "short"), /at least 8/);
+  await rejects("non-backup text refused", C.decrypt("{\"a\":1}", "whatever123"), /Not a Garmin Lens/);
+  await rejects("absurd KDF iteration count refused", C.decrypt(JSON.stringify(Object.assign(JSON.parse(enc), { iter: 1 })), "correct horse battery"), /key-derivation/);
+  const enc2 = await C.encrypt(plain, "correct horse battery", 2000); ok("fresh salt/IV each time", enc !== enc2 && JSON.parse(enc).salt !== JSON.parse(enc2).salt && JSON.parse(enc).iv !== JSON.parse(enc2).iv);
+  ok("default iteration count is >= 200k", C.ITER >= 200000, C.ITER);
+  done();
+})().catch(e => { console.error(e); process.exit(1); });
