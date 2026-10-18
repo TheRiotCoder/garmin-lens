@@ -231,17 +231,25 @@
     else if (cnt >= 3) level = "possible";
     return { level: level, signals: sig, count: cnt };
   }
-  function dayAnomaly(ds, i) { // sequential and memoised on the dataset: day i is scored against a baseline that excludes earlier flagged days
-    if (!ds._an) ds._an = { flags: [], res: [], done: 0 };
-    var c = ds._an; for (var k = c.done; k <= i && k < ds.n; k++) { c.res[k] = scoreAnomaly(ds, k, c.flags); c.flags[k] = !!c.res[k].level; c.done = k + 1; }
+  // A permanent new level (after illness, a new medication, big fitness change, altitude) must not flag forever: the first SUSTAINED_DAYS
+  // consecutive flagged days are kept out of the baseline; from the next flagged day on, days are let in, so the baseline moves to the new
+  // level and the flag clears once it has settled (a few days later, when the new level makes up most of the 28-day window).
+  var SUSTAINED_DAYS = 14;
+  function dayAnomaly(ds, i) { // sequential and memoised on the dataset
+    if (!ds._an) ds._an = { skip: [], flags: [], res: [], done: 0, streak: 0 };
+    var c = ds._an; for (var k = c.done; k <= i && k < ds.n; k++) {
+      c.res[k] = scoreAnomaly(ds, k, c.skip); c.flags[k] = !!c.res[k].level; c.streak = c.flags[k] ? c.streak + 1 : 0;
+      c.skip[k] = c.flags[k] && c.streak <= SUSTAINED_DAYS; c.done = k + 1;
+    }
     return c.res[i];
   }
   // Single flagged night = "worth watching"; 2+ consecutive flagged days = "strain pattern". Neither is a diagnosis.
   function anomalyStatus(ds, i) {
     var a = dayAnomaly(ds, i); if (!a.level) return { kind: null, days: 0, level: null, signals: a.signals, cycleTagged: false, lutealNote: false };
     var days = 1; for (var k = i - 1; k >= 0 && dayAnomaly(ds, k).level; k--) days++;
-    return { kind: days >= 2 ? "pattern" : "watch", days: days, level: a.level, signals: a.signals, cycleTagged: !!ds.cycleDays[ds.dates[i]], lutealNote: ds.settings.sex === "f" };
+    return { kind: days >= SUSTAINED_DAYS ? "sustained" : days >= 2 ? "pattern" : "watch", days: days, level: a.level, signals: a.signals, cycleTagged: !!ds.cycleDays[ds.dates[i]], lutealNote: ds.settings.sex === "f" };
   }
+  var SUSTAINED_NOTE = "Sustained change for 2 weeks. If this isn't explained by something you know about (for example recovery from illness, a new medication, a big change in fitness, or altitude), it's worth discussing with a clinician. Garmin Lens now treats this level as your new baseline, so the flag will clear once it is stable.";
   var LUTEAL_NOTE = "The luteal phase of the menstrual cycle can look like this (higher skin temperature and resting HR, lower HRV).";
   var ANOMALY_CARE = "This is not a diagnosis. Seek care for fever, chest pain, shortness of breath or fainting.";
   function anomalyEpisodes(ds) {
@@ -254,7 +262,7 @@
       var notes = []; for (var k = e.startI - 1; k <= e.endI; k++) (ds.notesByDate[ds.dates[k]] || []).forEach(function (n) { notes.push(n); });
       var explained = notes.filter(function (n) { return n.type === "alcohol" || n.type === "illness" || n.type === "travel" || n.type === "hard" || n.type === "cycle"; });
       for (var kc = e.startI; kc <= e.endI; kc++) if (ds.cycleDays[ds.dates[kc]] && !explained.some(function (n) { return n.type === "cycle"; })) explained.push({ type: "cycle" });
-      return { start: e.days[0].date, end: e.days[e.days.length - 1].date, length: e.days.length, kind: e.days.length >= 2 ? "pattern" : "watch", strongDays: strong, level: strong ? "strong" : "possible", signals: Object.keys(keys), notes: explained.map(function (n) { return n.type; }), matchesNote: explained.length > 0 };
+      return { start: e.days[0].date, end: e.days[e.days.length - 1].date, length: e.days.length, kind: e.days.length >= SUSTAINED_DAYS ? "sustained" : e.days.length >= 2 ? "pattern" : "watch", strongDays: strong, level: strong ? "strong" : "possible", signals: Object.keys(keys), notes: explained.map(function (n) { return n.type; }), matchesNote: explained.length > 0 };
     });
   }
 
@@ -300,5 +308,5 @@
 
   return { DEFAULTS: DEFAULTS, SERIES: SERIES, LABELS: LABELS, ZONE_NAMES: ZONE_NAMES, resolveSettings: resolveSettings, sleepClock: sleepClock, trimpSample: trimpSample, trimpFromSeries: trimpFromSeries, trimpHour: trimpHour, zoneEdges: zoneEdges, zonesFromSeries: zonesFromSeries, enrichActivity: enrichActivity,
     prepare: prepare, performanceChart: performanceChart, acwr: acwr, acwrZone: acwrZone, monotony: monotony, zScore: zScore, normalRange: normalRange, rollingBaseline: rollingBaseline, rollingBand: rollingBand, recovery: recovery, RECOVERY_WEIGHTS: RECOVERY_WEIGHTS, RECOVERY_K: RECOVERY_K,
-    sleepRegularity: sleepRegularity, socialJetLag: socialJetLag, sleepDebt: sleepDebt, dayAnomaly: dayAnomaly, anomalyStatus: anomalyStatus, ANOMALY_CARE: ANOMALY_CARE, LUTEAL_NOTE: LUTEAL_NOTE, SLEEP_BONUS_CAP: SLEEP_BONUS_CAP, bCoef: bCoef, ACWR_HIGH: ACWR_HIGH, ACWR_LOW: ACWR_LOW, estimateMaxHr: estimateMaxHr, anomalyEpisodes: anomalyEpisodes, decoupling: decoupling, hrDriftSlope: hrDriftSlope, paceStr: paceStr, personalRecords: personalRecords, weeklyZoneDistribution: weeklyZoneDistribution };
+    sleepRegularity: sleepRegularity, socialJetLag: socialJetLag, sleepDebt: sleepDebt, dayAnomaly: dayAnomaly, anomalyStatus: anomalyStatus, ANOMALY_CARE: ANOMALY_CARE, LUTEAL_NOTE: LUTEAL_NOTE, SUSTAINED_NOTE: SUSTAINED_NOTE, SUSTAINED_DAYS: SUSTAINED_DAYS, SLEEP_BONUS_CAP: SLEEP_BONUS_CAP, bCoef: bCoef, ACWR_HIGH: ACWR_HIGH, ACWR_LOW: ACWR_LOW, estimateMaxHr: estimateMaxHr, anomalyEpisodes: anomalyEpisodes, decoupling: decoupling, hrDriftSlope: hrDriftSlope, paceStr: paceStr, personalRecords: personalRecords, weeklyZoneDistribution: weeklyZoneDistribution };
 });

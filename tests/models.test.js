@@ -149,7 +149,9 @@ ok("prepare() keeps day and activity counts", ds.acts.length === dd.activities.l
   }
   const dsL = M.prepare(mkIll(20), [], [], S0);
   ok("without exclusion the trailing baseline WOULD have normalised (plain z of RHR on day 59 < 1.5)", M.zScore(dsL, "rhr", 59).z < 1.5, M.zScore(dsL, "rhr", 59).z);
-  M.dayAnomaly(dsL, 59); ok("with exclusion the same day is z ≫ 1.5", M.zScore(dsL, "rhr", 59, null, true, dsL._an.flags).z > 1.5);
+  // NOTE (v1.1.1): from the 15th consecutive flagged day onward flagged days are admitted into the baseline (sustained-change rule), so the mask used here
+  // is the skip mask (first 14 flagged days only). Day 59 is episode day 20: pre-shift days still outnumber admitted days (9 vs 5), so it is still flagged.
+  M.dayAnomaly(dsL, 59); ok("with exclusion the same day is z ≫ 1.5", M.zScore(dsL, "rhr", 59, null, true, dsL._an.skip).z > 1.5);
   // cycle confounder
   const SFx = Object.assign({}, S0, { sex: "f" });
   const base2 = mk(46, k => k >= 40 && k < 44 ? { rhr: 63, hrv: 40, sleepResp: 16.5 } : { rhr: 55 + noise(k), hrv: 60 * Math.exp(noise(k) * 0.02), sleepResp: 14 });
@@ -168,5 +170,26 @@ ok("prepare() keeps day and activity counts", ds.acts.length === dd.activities.l
   near("8 h (0.5 h over need) still gets its proportional +0.5", sl(8).z, 0.5, 1e-9);
   near("a short night is NOT capped on the way down (5 h → −2.5)", sl(5).z, -2.5, 1e-9);
   eq("the explanation text names the cap", /at most \+1/.test(sl(8).label), true);
+}
+
+// ---- review round 3: a permanent new level must not flag forever
+{
+  const noise = k => ((k * 7919) % 11 - 5) / 10;
+  const mkShift = (len, tail) => mk(40 + len + tail, (k) => k >= 40 ? { rhr: 63 + noise(k) * 0.5, hrv: 40 * Math.exp(noise(k) * 0.02), sleepResp: 16.5 } : { rhr: 55 + noise(k), hrv: 60 * Math.exp(noise(k) * 0.02), sleepResp: 14 + noise(k) * 0.1 });
+  const dsP = M.prepare(mkShift(30, 0), [], [], S0), fl = []; for (let e = 1; e <= 30; e++) fl.push(!!M.dayAnomaly(dsP, 39 + e).level);
+  const lastFlag = fl.lastIndexOf(true) + 1;
+  eq("30-day permanent shift: days 1–14 all flag (still excluded from baseline)", fl.slice(0, 14).every(Boolean), true);
+  eq("SUSTAINED_DAYS is 14", M.SUSTAINED_DAYS, 14);
+  eq("day 13 is a strain pattern, day 14 becomes 'sustained'", [M.anomalyStatus(dsP, 39 + 13).kind, M.anomalyStatus(dsP, 39 + 14).kind], ["pattern", "sustained"]);
+  ok("sustained wording says 2 weeks and discussing with a clinician", /Sustained change for 2 weeks/.test(M.SUSTAINED_NOTE) && /worth discussing with a clinician/.test(M.SUSTAINED_NOTE) && /isn't explained by something you know about/.test(M.SUSTAINED_NOTE));
+  ok("the flag clears once the new baseline settles: last flagged day is between 15 and 26 (got " + lastFlag + ")", lastFlag >= 15 && lastFlag <= 26, lastFlag);
+  eq("…and stays clear for the remaining days of the shift (days " + (lastFlag + 1) + "–30)", fl.slice(lastFlag).some(Boolean), false);
+  const epP = M.anomalyEpisodes(dsP); eq("one episode, labelled 'sustained', ending where the flag clears", [epP.length, epP[0].kind, epP[0].length], [1, "sustained", lastFlag]);
+  // a 13-day episode stays below the threshold and every day flags; 10-day behaviour is unchanged
+  const ds13 = M.prepare(mkShift(13, 5).map((d, k) => k >= 53 ? Object.assign({}, d, { rhr: 55 + noise(k), hrv: 60 * Math.exp(noise(k) * 0.02), sleepResp: 14 }) : d), [], [], S0);
+  eq("13-day episode: all 13 days flag, never 'sustained'", [Array.from({ length: 13 }, (_, k) => !!M.dayAnomaly(ds13, 40 + k).level).every(Boolean), M.anomalyStatus(ds13, 52).kind], [true, "pattern"]);
+  // after the shift settled, a NEW acute illness on top of the new level is detected again
+  const mk2 = mk(40 + 45, (k) => k < 40 ? { rhr: 55 + noise(k), hrv: 60 * Math.exp(noise(k) * 0.02), sleepResp: 14 } : k < 40 + 40 ? { rhr: 63 + noise(k) * 0.5, hrv: 40 * Math.exp(noise(k) * 0.02), sleepResp: 16.5 } : { rhr: 71 + noise(k) * 0.5, hrv: 28 * Math.exp(noise(k) * 0.02), sleepResp: 19 });
+  const ds2 = M.prepare(mk2, [], [], S0); ok("a further jump on top of the settled new level flags again", !!M.dayAnomaly(ds2, 82).level && !M.dayAnomaly(ds2, 78).level, [M.dayAnomaly(ds2, 78).level, M.dayAnomaly(ds2, 82).level]);
 }
 done();

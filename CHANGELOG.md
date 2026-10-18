@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 – 2026-10-18
+- **Sustained-change cap on the anomaly baseline.** Flagged days are still kept out of the baseline, but only for the first 14 consecutive flagged days. At 14 days the wording becomes "Sustained change for 2 weeks. If this isn't explained by something you know about, it's worth discussing with a clinician", and from the next flagged day on the new level is let into the baseline so the flag clears once it is stable. A permanent shift (post-illness, new medication, fitness change, altitude) no longer flags forever.
+- Tests: 10-, 13- and 20-day episodes still flag every day; a 30-day permanent shift flags days 1–14, shows "sustained" from day 14, then clears on day 22 and stays clear; a further jump on top of the settled level flags again.
+- Service-worker cache renamed to `garmin-lens-v1.1.1`.
+
 ## 1.1.0 – 2026-10-18
 Review fixes (physiology review, round 2).
 - **Anomaly baseline:** flagged days are excluded from the baseline of later days, so a long illness-like episode keeps flagging instead of normalising itself after ~4–5 days. Tests: 10- and 20-day episodes flag every day.
